@@ -407,9 +407,15 @@ export class GameEngine {
     this.onHudUpdate?.();
   }
 
+  public applyCurrentTheme(): void {
+    const theme = SaveManager.getInstance().data.selectedTheme || 'auto';
+    this.renderer3d.applyTheme(theme, this.currentWave);
+  }
+
   public startWave(waveNum: number): void {
     const save = SaveManager.getInstance();
     this.currentWave = waveNum;
+    this.applyCurrentTheme();
     const isBossWave = waveNum % 5 === 0;
     this.waveDuration = isBossWave ? 45 : Math.min(40, 22 + waveNum * 2);
     this.waveTimer = this.waveDuration;
@@ -1544,57 +1550,62 @@ export class GameEngine {
       }
     }
 
-    // PVP Royale Status Banner (Positioned cleanly below Top HUD & Boss Bar)
-    if (this.gameMode === 'PVP' && this.state === 'PLAYING') {
-      const trophies = SaveManager.getInstance().data.pvpTrophies || 1000;
-      const pwrLvl = SaveManager.getInstance().getCommanderPowerLevel();
-      const pvpY = activeBoss ? 148 : 112;
-      ctx.save();
-      ctx.font = '700 12px Orbitron, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
-      ctx.strokeStyle = '#f59e0b';
-      ctx.lineWidth = 1.5;
-      const boxW = Math.min(440, w * 0.92);
-      ctx.fillRect((w - boxW) / 2, pvpY, boxW, 24);
-      ctx.strokeRect((w - boxW) / 2, pvpY, boxW, 24);
-      ctx.fillStyle = '#facc15';
-      const pvpText =
-        I18n.getLang() === 'tr'
-          ? `⚔️ PVP • GÜÇ SV.${pwrLvl} • RAKİP: ${rivalsAlive}/3 • 🏆 ${trophies}`
-          : `⚔️ PVP • PWR LVL.${pwrLvl} • RIVALS: ${rivalsAlive}/3 • 🏆 ${trophies}`;
-      ctx.fillText(pvpText, w / 2, pvpY + 16);
-      ctx.restore();
-    }
-
-    // Prominent Top Boss Dreadnought Health Bar + Rage Stage + 34s Detonation Timer (Moved down to Y=114 so it is never covered by Top HUD!)
+    // Prominent Top Boss Dreadnought Health Bar + Rage Stage + 34s Detonation Timer (Compact & mobile-responsive)
+    let bossBarBottom = 0;
     if (activeBoss && this.state === 'PLAYING') {
-      const barW = Math.min(580, w * 0.88);
-      const barH = 26;
+      const isMobile = w < 600;
+      const barW = Math.min(580, w * 0.94);
+      const barH = isMobile ? 20 : 24;
       const barX = (w - barW) / 2;
-      const barY = 114;
+      const barY = isMobile ? 38 : 46;
+      bossBarBottom = barY + barH;
       const pct = Math.max(0, activeBoss.hp / activeBoss.maxHp);
       const detLeft = Math.max(0, 34 - this.bossElapsedTime);
 
       ctx.save();
       ctx.fillStyle = 'rgba(15, 23, 42, 0.95)';
       ctx.strokeStyle = detLeft < 10 ? '#facc15' : '#f43f5e';
-      ctx.lineWidth = 2.5;
+      ctx.lineWidth = 2;
       ctx.fillRect(barX, barY, barW, barH);
       ctx.strokeRect(barX, barY, barW, barH);
 
       ctx.fillStyle = this.bossRageStage > 0 ? '#f97316' : '#e11d48';
       ctx.fillRect(barX + 2, barY + 2, (barW - 4) * pct, barH - 4);
 
-      ctx.font = '700 12px Orbitron, sans-serif';
+      ctx.font = isMobile ? '700 10px Orbitron, sans-serif' : '700 12px Orbitron, sans-serif';
       ctx.fillStyle = '#ffffff';
       ctx.textAlign = 'center';
       const rageBadge = this.bossRageStage > 0 ? ` • 🔥 RAGE ${this.bossRageStage}/3` : '';
       const bossLabel =
         I18n.getLang() === 'tr'
-          ? `⚠️ BOSS (HP ${Math.ceil(activeBoss.hp)}/${activeBoss.maxHp})${rageBadge} • 💥 İNFİLAK: ${detLeft.toFixed(1)}sn`
-          : `⚠️ BOSS (HP ${Math.ceil(activeBoss.hp)}/${activeBoss.maxHp})${rageBadge} • 💥 DETONATION: ${detLeft.toFixed(1)}s`;
-      ctx.fillText(bossLabel, w / 2, barY + 17);
+          ? `⚠️ BOSS (${Math.ceil(activeBoss.hp)}/${activeBoss.maxHp})${rageBadge} • 💥 İNFİLAK: ${detLeft.toFixed(1)}s`
+          : `⚠️ BOSS (${Math.ceil(activeBoss.hp)}/${activeBoss.maxHp})${rageBadge} • 💥 DETONATE: ${detLeft.toFixed(1)}s`;
+      ctx.fillText(bossLabel, w / 2, barY + (isMobile ? 14 : 17));
+      ctx.restore();
+    }
+
+    // PVP Royale Status Banner (Positioned cleanly below Top HUD & Boss Bar)
+    if (this.gameMode === 'PVP' && this.state === 'PLAYING') {
+      const isMobile = w < 600;
+      const trophies = SaveManager.getInstance().data.pvpTrophies || 1000;
+      const pwrLvl = SaveManager.getInstance().getCommanderPowerLevel();
+      const pvpY = activeBoss ? bossBarBottom + 4 : (isMobile ? 38 : 46);
+      const boxH = isMobile ? 20 : 22;
+      ctx.save();
+      ctx.font = isMobile ? '700 10px Orbitron, sans-serif' : '700 11px Orbitron, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
+      ctx.strokeStyle = '#f59e0b';
+      ctx.lineWidth = 1.5;
+      const boxW = Math.min(420, w * 0.94);
+      ctx.fillRect((w - boxW) / 2, pvpY, boxW, boxH);
+      ctx.strokeRect((w - boxW) / 2, pvpY, boxW, boxH);
+      ctx.fillStyle = '#facc15';
+      const pvpText =
+        I18n.getLang() === 'tr'
+          ? `⚔️ PVP • GÜÇ ${pwrLvl} • RAKİP: ${rivalsAlive}/3 • 🏆 ${trophies}`
+          : `⚔️ PVP • PWR ${pwrLvl} • RIVALS: ${rivalsAlive}/3 • 🏆 ${trophies}`;
+      ctx.fillText(pvpText, w / 2, pvpY + (isMobile ? 14 : 15));
       ctx.restore();
     }
 

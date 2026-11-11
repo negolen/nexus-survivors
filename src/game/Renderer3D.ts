@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { CommanderId, SaveManager } from '../core/SaveManager';
+import { ArenaThemeId, CommanderId, SaveManager } from '../core/SaveManager';
 import type {
   Enemy,
   FrostRing,
@@ -10,6 +10,52 @@ import type {
   Projectile
 } from './GameEngine';
 import { TIER_COLORS, WeaponArchetypeId, WeaponInstance } from './WeaponSystem';
+
+export type ConcreteArenaTheme = 'cyber_nebula' | 'solar_inferno' | 'cryo_glacier' | 'emerald_matrix';
+
+interface ThemeColorProfile {
+  fogColor: number;
+  hemiSky: number;
+  hemiGround: number;
+  accentColor: number;
+  floorColor: number;
+  floorEmissive: number;
+}
+
+const THEME_PROFILES: Record<ConcreteArenaTheme, ThemeColorProfile> = {
+  cyber_nebula: {
+    fogColor: 0x1a1f4a,
+    hemiSky: 0x93c5fd,
+    hemiGround: 0x0f172a,
+    accentColor: 0x38bdf8,
+    floorColor: 0xb8c8ff,
+    floorEmissive: 0x16305e
+  },
+  solar_inferno: {
+    fogColor: 0x2b0a07,
+    hemiSky: 0xfb923c,
+    hemiGround: 0x330906,
+    accentColor: 0xf97316,
+    floorColor: 0xfecaca,
+    floorEmissive: 0x5e180d
+  },
+  cryo_glacier: {
+    fogColor: 0x072233,
+    hemiSky: 0x67e8f9,
+    hemiGround: 0x082b3d,
+    accentColor: 0x22d3ee,
+    floorColor: 0xa5f3fc,
+    floorEmissive: 0x0c3b52
+  },
+  emerald_matrix: {
+    fogColor: 0x041f11,
+    hemiSky: 0x4ade80,
+    hemiGround: 0x052e18,
+    accentColor: 0x22c55e,
+    floorColor: 0x86efac,
+    floorEmissive: 0x0a421e
+  }
+};
 
 interface PodEntry {
   root: THREE.Group;
@@ -56,6 +102,10 @@ export class Renderer3D {
   // Environment Animated Elements
   private dirLight!: THREE.DirectionalLight;
   private backLight!: THREE.DirectionalLight;
+  private hemiLight!: THREE.HemisphereLight;
+  private floorMat!: THREE.MeshPhysicalMaterial;
+  private currentActiveTheme: ConcreteArenaTheme | null = null;
+  private themeTextureCache = new Map<ConcreteArenaTheme, { sky: THREE.CanvasTexture; floor: THREE.CanvasTexture }>();
   private reactorRings: THREE.Mesh[] = [];
   private reactorPulseRing!: THREE.Mesh;
   private reactorCoreMat!: THREE.MeshBasicMaterial;
@@ -117,7 +167,6 @@ export class Renderer3D {
 
     // 2. Scene, Studio PBR Environment Reflection Cubemap (PMREM + RoomEnvironment) & Fog
     this.scene = new THREE.Scene();
-    this.scene.background = this.createNebulaSkyTexture();
     this.scene.fog = new THREE.FogExp2(0x1a1f4a, 0.00022);
 
     const pmremGenerator = new THREE.PMREMGenerator(this.renderer);
@@ -126,8 +175,10 @@ export class Renderer3D {
 
     // 3. Generate Procedural PBR Bump/Roughness/Glow Textures
     this.armorBumpTex = this.createSciFiArmorTexture();
-    this.floorHexTex = this.createHexFloorTexture();
     this.glowSpriteTex = this.createGlowSpriteTexture();
+    const initTex = this.getThemeTextures('cyber_nebula');
+    this.floorHexTex = initTex.floor;
+    this.scene.background = initTex.sky;
 
     // 4. Perspective Camera
     this.camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 10, 7000);
@@ -137,8 +188,8 @@ export class Renderer3D {
     this.geoFrostRing.rotateX(-Math.PI / 2);
 
     // 5. Cinematic Studio Lighting + Dynamic Following Shadow Frustum
-    const hemiLight = new THREE.HemisphereLight(0x93c5fd, 0x0f172a, 1.4);
-    this.scene.add(hemiLight);
+    this.hemiLight = new THREE.HemisphereLight(0x93c5fd, 0x0f172a, 1.4);
+    this.scene.add(this.hemiLight);
 
     this.dirLight = new THREE.DirectionalLight(0xf8fafc, 3.2);
     this.dirLight.position.set(worldSize / 2 + 320, 780, worldSize / 2 + 260);
@@ -161,6 +212,9 @@ export class Renderer3D {
     this.buildCyberMegacityAndArena();
     this.buildPlayerMech();
     this.buildWeaponDronePods();
+
+    const initialTheme = SaveManager.getInstance().data.selectedTheme || 'auto';
+    this.applyTheme(initialTheme, 1);
   }
 
   public resize(width: number, height: number): void {
@@ -208,26 +262,213 @@ export class Renderer3D {
     return tex;
   }
 
-  private createHexFloorTexture(): THREE.CanvasTexture {
+  public applyTheme(themeId: ArenaThemeId, wave: number = 1): void {
+    let concrete: ConcreteArenaTheme;
+    if (themeId === 'auto') {
+      const cycle: ConcreteArenaTheme[] = ['cyber_nebula', 'solar_inferno', 'cryo_glacier', 'emerald_matrix'];
+      const idx = Math.floor(Math.max(0, wave - 1) / 5) % cycle.length;
+      concrete = cycle[idx];
+    } else {
+      concrete = themeId;
+    }
+
+    if (this.currentActiveTheme === concrete && this.scene.background) return;
+    this.currentActiveTheme = concrete;
+
+    const textures = this.getThemeTextures(concrete);
+    const cfg = THEME_PROFILES[concrete];
+
+    this.scene.background = textures.sky;
+    if (this.scene.fog instanceof THREE.FogExp2) {
+      this.scene.fog.color.setHex(cfg.fogColor);
+    }
+    if (this.hemiLight) {
+      this.hemiLight.color.setHex(cfg.hemiSky);
+      this.hemiLight.groundColor.setHex(cfg.hemiGround);
+    }
+    if (this.floorMat) {
+      this.floorMat.map = textures.floor;
+      this.floorMat.bumpMap = textures.floor;
+      this.floorMat.emissiveMap = textures.floor;
+      this.floorMat.color.setHex(cfg.floorColor);
+      this.floorMat.emissive.setHex(cfg.floorEmissive);
+      this.floorMat.needsUpdate = true;
+    }
+    if (this.barrierBeamMat) {
+      this.barrierBeamMat.color.setHex(cfg.accentColor);
+    }
+    if (this.reactorCoreMat) {
+      this.reactorCoreMat.color.setHex(cfg.accentColor);
+    }
+    if (this.dustPoints && (this.dustPoints.material as THREE.PointsMaterial)) {
+      (this.dustPoints.material as THREE.PointsMaterial).color.setHex(cfg.accentColor);
+    }
+  }
+
+  private getThemeTextures(theme: ConcreteArenaTheme): { sky: THREE.CanvasTexture; floor: THREE.CanvasTexture } {
+    const cached = this.themeTextureCache.get(theme);
+    if (cached) return cached;
+
+    const sky = this.generateSkyTexture(theme);
+    const floor = this.generateFloorTexture(theme);
+    const result = { sky, floor };
+    this.themeTextureCache.set(theme, result);
+    return result;
+  }
+
+  private generateSkyTexture(theme: ConcreteArenaTheme): THREE.CanvasTexture {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1024;
+    canvas.height = 1024;
+    const ctx = canvas.getContext('2d')!;
+
+    const grad = ctx.createLinearGradient(0, 0, 0, 1024);
+    if (theme === 'solar_inferno') {
+      grad.addColorStop(0, '#1c0505');
+      grad.addColorStop(0.4, '#581309');
+      grad.addColorStop(0.72, '#a3360b');
+      grad.addColorStop(1, '#f97316');
+    } else if (theme === 'cryo_glacier') {
+      grad.addColorStop(0, '#03111f');
+      grad.addColorStop(0.4, '#07364d');
+      grad.addColorStop(0.75, '#0e7490');
+      grad.addColorStop(1, '#67e8f9');
+    } else if (theme === 'emerald_matrix') {
+      grad.addColorStop(0, '#02160c');
+      grad.addColorStop(0.4, '#064227');
+      grad.addColorStop(0.75, '#047857');
+      grad.addColorStop(1, '#34d399');
+    } else {
+      // cyber_nebula
+      grad.addColorStop(0, '#0b0f3a');
+      grad.addColorStop(0.45, '#3b1a6e');
+      grad.addColorStop(0.75, '#a3318f');
+      grad.addColorStop(1, '#ff7a59');
+    }
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 1024, 1024);
+
+    let blobs: Array<[number, number, number, string]>;
+    if (theme === 'solar_inferno') {
+      blobs = [
+        [240, 280, 280, 'rgba(249,115,22,0.45)'],
+        [750, 260, 300, 'rgba(239,68,68,0.42)'],
+        [500, 650, 320, 'rgba(251,146,60,0.35)'],
+        [820, 680, 260, 'rgba(245,158,11,0.32)']
+      ];
+    } else if (theme === 'cryo_glacier') {
+      blobs = [
+        [220, 280, 260, 'rgba(34,211,238,0.45)'],
+        [720, 240, 300, 'rgba(6,182,212,0.4)'],
+        [520, 620, 320, 'rgba(103,232,249,0.32)'],
+        [850, 690, 250, 'rgba(165,243,252,0.28)']
+      ];
+    } else if (theme === 'emerald_matrix') {
+      blobs = [
+        [220, 300, 260, 'rgba(34,197,94,0.45)'],
+        [760, 240, 300, 'rgba(16,185,129,0.42)'],
+        [500, 640, 340, 'rgba(74,222,128,0.3)'],
+        [840, 690, 260, 'rgba(5,150,105,0.35)']
+      ];
+    } else {
+      blobs = [
+        [220, 300, 260, 'rgba(56,189,248,0.35)'],
+        [760, 220, 300, 'rgba(168,85,247,0.38)'],
+        [520, 620, 340, 'rgba(236,72,153,0.28)'],
+        [860, 700, 240, 'rgba(34,211,238,0.25)']
+      ];
+    }
+
+    for (const [bx, by, br, col] of blobs) {
+      const g = ctx.createRadialGradient(bx, by, 10, bx, by, br);
+      g.addColorStop(0, col);
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, 1024, 1024);
+    }
+
+    if (theme === 'emerald_matrix') {
+      ctx.fillStyle = '#86efac';
+      for (let col = 20; col < 1024; col += 38) {
+        const startY = Math.random() * 380;
+        const len = 120 + Math.random() * 260;
+        for (let y = startY; y < startY + len; y += 14) {
+          ctx.globalAlpha = Math.random() * 0.85;
+          ctx.fillRect(col, y, 2.5, 6);
+        }
+      }
+    } else {
+      ctx.fillStyle = theme === 'solar_inferno' ? '#fef08a' : '#ffffff';
+      for (let i = 0; i < 260; i++) {
+        ctx.globalAlpha = 0.3 + Math.random() * 0.7;
+        ctx.fillRect(Math.random() * 1024, Math.random() * 700, 1.8, 1.8);
+      }
+    }
+    ctx.globalAlpha = 1;
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  }
+
+  private generateFloorTexture(theme: ConcreteArenaTheme): THREE.CanvasTexture {
     const canvas = document.createElement('canvas');
     canvas.width = 512;
     canvas.height = 512;
     const ctx = canvas.getContext('2d')!;
 
-    ctx.fillStyle = '#1b2b4a';
+    let baseBg: string;
+    let plate1: string;
+    let plate2: string;
+    let glowLine1: string;
+    let glowLine2: string;
+    let nodeColor: string;
+
+    if (theme === 'solar_inferno') {
+      baseBg = '#1c0a08';
+      plate1 = '#30130f';
+      plate2 = '#240d0a';
+      glowLine1 = '#f97316';
+      glowLine2 = '#ef4444';
+      nodeColor = '#fef08a';
+    } else if (theme === 'cryo_glacier') {
+      baseBg = '#0d2030';
+      plate1 = '#14334a';
+      plate2 = '#0f283a';
+      glowLine1 = '#22d3ee';
+      glowLine2 = '#06b6d4';
+      nodeColor = '#e0f2fe';
+    } else if (theme === 'emerald_matrix') {
+      baseBg = '#061d10';
+      plate1 = '#0b331c';
+      plate2 = '#072614';
+      glowLine1 = '#22c55e';
+      glowLine2 = '#10b981';
+      nodeColor = '#86efac';
+    } else {
+      // cyber_nebula
+      baseBg = '#1b2b4a';
+      plate1 = '#27406b';
+      plate2 = '#1e3358';
+      glowLine1 = '#38bdf8';
+      glowLine2 = '#a855f7';
+      nodeColor = '#facc15';
+    }
+
+    ctx.fillStyle = baseBg;
     ctx.fillRect(0, 0, 512, 512);
 
-    // Brighter metallic tech plates with glowing neon circuit seams
     const step = 64;
     for (let x = 0; x < 512; x += step) {
       for (let y = 0; y < 512; y += step) {
-        ctx.fillStyle = (x / step + y / step) % 2 === 0 ? '#27406b' : '#1e3358';
+        ctx.fillStyle = (x / step + y / step) % 2 === 0 ? plate1 : plate2;
         ctx.fillRect(x + 4, y + 4, step - 8, step - 8);
       }
     }
-    ctx.shadowColor = '#38bdf8';
+
+    ctx.shadowColor = glowLine1;
     ctx.shadowBlur = 8;
-    ctx.strokeStyle = '#38bdf8';
+    ctx.strokeStyle = glowLine1;
     ctx.lineWidth = 2.5;
     for (let i = 0; i <= 512; i += step * 2) {
       ctx.beginPath();
@@ -237,8 +478,9 @@ export class Renderer3D {
       ctx.lineTo(512, i);
       ctx.stroke();
     }
-    ctx.shadowColor = '#a855f7';
-    ctx.strokeStyle = '#a855f7';
+
+    ctx.shadowColor = glowLine2;
+    ctx.strokeStyle = glowLine2;
     ctx.lineWidth = 2;
     for (let x = 0; x < 512; x += step * 2) {
       for (let y = 0; y < 512; y += step * 2) {
@@ -247,7 +489,8 @@ export class Renderer3D {
         ctx.lineTo(x + 50, y + 14);
         ctx.lineTo(x + 50, y + 50);
         ctx.stroke();
-        ctx.fillStyle = '#facc15';
+
+        ctx.fillStyle = nodeColor;
         ctx.beginPath();
         ctx.arc(x + 14, y + 14, 3, 0, Math.PI * 2);
         ctx.fill();
@@ -259,45 +502,6 @@ export class Renderer3D {
     tex.wrapS = THREE.RepeatWrapping;
     tex.wrapT = THREE.RepeatWrapping;
     tex.repeat.set(28, 28);
-    return tex;
-  }
-
-  private createNebulaSkyTexture(): THREE.CanvasTexture {
-    const canvas = document.createElement('canvas');
-    canvas.width = 1024;
-    canvas.height = 1024;
-    const ctx = canvas.getContext('2d')!;
-
-    const grad = ctx.createLinearGradient(0, 0, 0, 1024);
-    grad.addColorStop(0, '#0b0f3a');
-    grad.addColorStop(0.45, '#3b1a6e');
-    grad.addColorStop(0.75, '#a3318f');
-    grad.addColorStop(1, '#ff7a59');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, 1024, 1024);
-
-    const blobs: Array<[number, number, number, string]> = [
-      [220, 300, 260, 'rgba(56,189,248,0.35)'],
-      [760, 220, 300, 'rgba(168,85,247,0.38)'],
-      [520, 620, 340, 'rgba(236,72,153,0.28)'],
-      [860, 700, 240, 'rgba(34,211,238,0.25)']
-    ];
-    for (const [bx, by, br, col] of blobs) {
-      const g = ctx.createRadialGradient(bx, by, 10, bx, by, br);
-      g.addColorStop(0, col);
-      g.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.fillStyle = g;
-      ctx.fillRect(0, 0, 1024, 1024);
-    }
-    ctx.fillStyle = '#ffffff';
-    for (let i = 0; i < 260; i++) {
-      ctx.globalAlpha = 0.3 + Math.random() * 0.7;
-      ctx.fillRect(Math.random() * 1024, Math.random() * 700, 1.6, 1.6);
-    }
-    ctx.globalAlpha = 1;
-
-    const tex = new THREE.CanvasTexture(canvas);
-    tex.colorSpace = THREE.SRGBColorSpace;
     return tex;
   }
 
@@ -358,7 +562,7 @@ export class Renderer3D {
     // 2. Photorealistic PBR Metallic Cyber Floor Plane with Bump & Roughness Maps + Shadow Receiving
     const floorGeo = new THREE.PlaneGeometry(this.worldSize + 2400, this.worldSize + 2400);
     floorGeo.rotateX(-Math.PI / 2);
-    const floorMat = new THREE.MeshPhysicalMaterial({
+    this.floorMat = new THREE.MeshPhysicalMaterial({
       color: 0xb8c8ff,
       map: this.floorHexTex,
       bumpMap: this.floorHexTex,
@@ -371,7 +575,7 @@ export class Renderer3D {
       clearcoat: 0.4,
       clearcoatRoughness: 0.25
     });
-    const floorMesh = new THREE.Mesh(floorGeo, floorMat);
+    const floorMesh = new THREE.Mesh(floorGeo, this.floorMat);
     floorMesh.position.set(half, -0.5, half);
     floorMesh.receiveShadow = true;
     this.scene.add(floorMesh);

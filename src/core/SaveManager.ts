@@ -1,6 +1,7 @@
 import { I18n, LangCode } from './I18n';
 
 export type CommanderId = 'vanguard' | 'valkyrie' | 'tesla_engineer' | 'void_phantom';
+export type ArenaThemeId = 'auto' | 'cyber_nebula' | 'solar_inferno' | 'cryo_glacier' | 'emerald_matrix';
 
 export interface MetaUpgrades {
   damageLevel: number;
@@ -47,6 +48,7 @@ export interface SaveData {
   language: LangCode;
   playerName: string;
   selectedCommander: CommanderId;
+  selectedTheme: ArenaThemeId;
   unlockedCommanders: CommanderId[];
   soloRun: SoloRunSnapshot | null;
   gold: number;
@@ -76,6 +78,7 @@ const DEFAULT_SAVE: SaveData = {
   language: 'en', // Strict English default
   playerName: 'CYBER_COMMANDER',
   selectedCommander: 'vanguard',
+  selectedTheme: 'auto',
   unlockedCommanders: ['vanguard', 'valkyrie'],
   soloRun: null,
   gold: 150,
@@ -187,6 +190,11 @@ export class SaveManager {
   public setLanguage(lang: LangCode): void {
     this.data.language = lang;
     I18n.setLang(lang);
+    this.save();
+  }
+
+  public setArenaTheme(theme: ArenaThemeId): void {
+    this.data.selectedTheme = theme;
     this.save();
   }
 

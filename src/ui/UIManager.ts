@@ -1,6 +1,6 @@
 import { AudioManager } from '../core/AudioManager';
 import { I18n } from '../core/I18n';
-import { CommanderId, CrateLootResult, MetaUpgrades, MissionTiers, SaveManager } from '../core/SaveManager';
+import { ArenaThemeId, CommanderId, CrateLootResult, MetaUpgrades, MissionTiers, SaveManager } from '../core/SaveManager';
 import { GameEngine, TACTICAL_CARDS_POOL, TacticalCard } from '../game/GameEngine';
 import {
   TIER_COLORS,
@@ -111,6 +111,17 @@ export class UIManager {
     };
   }
 
+  private getThemeHudLabel(theme?: ArenaThemeId): string {
+    const t = theme || SaveManager.getInstance().data.selectedTheme || 'auto';
+    switch (t) {
+      case 'cyber_nebula': return '🌌 NEBULA';
+      case 'solar_inferno': return '🔥 INFERNO';
+      case 'cryo_glacier': return '❄️ CRYO';
+      case 'emerald_matrix': return '🟩 MATRIX';
+      default: return '🔄 AUTO';
+    }
+  }
+
   private renderTopHud(): string {
     const save = SaveManager.getInstance().data;
     const p = this.engine.player;
@@ -118,25 +129,57 @@ export class UIManager {
     const xpPct = Math.max(0, Math.min(100, (p.xp / p.xpToNext) * 100));
     const isSpeed2x = this.engine.gameSpeedMultiplier === 2;
     const langLabel = save.language === 'tr' ? '🌐 TR | EN' : '🌐 EN | TR';
+    const isMenu = this.engine.state === 'MENU';
 
-    return `
-      <header class="top-hud">
+    // 1. IN-GAME COMBAT HUD (Solo & Arena PvP Royale): Strictly 1 line, sleek, mobile-optimized
+    if (!isMenu) {
+      return `
+      <header class="top-hud in-game-hud">
         <div class="hud-left">
-          <div class="hp-bar-wrap">
+          <div class="hp-bar-wrap" title="Hull Integrity">
             <div id="hud-hp-fill" class="hp-bar-fill" style="width: ${hpPct}%"></div>
-            <span id="hud-hp-text" class="hp-bar-label">HP ${Math.ceil(p.hp)} / ${p.maxHp}</span>
+            <span id="hud-hp-text" class="hp-bar-label">${Math.ceil(p.hp)} / ${p.maxHp}</span>
           </div>
-          <div class="xp-bar-wrap" title="In-Run Tactical XP">
+          <div class="xp-bar-wrap" title="Tactical Level Progress">
             <div id="hud-xp-fill" class="xp-bar-fill" style="width: ${xpPct}%"></div>
             <span id="hud-lvl-text" class="hp-bar-label">${I18n.t('lvl_label')} ${p.level}</span>
-          </div>
-          <div class="wave-pill">
-            <span id="hud-wave-num">${I18n.t('wave_label')} ${this.engine.currentWave}</span>
-            <strong id="hud-wave-timer">${Math.ceil(this.engine.waveTimer)}s</strong>
           </div>
         </div>
 
         <div class="hud-center">
+          <div class="wave-pill">
+            <span id="hud-wave-num">${I18n.t('wave_label')} ${this.engine.currentWave}</span>
+            <strong id="hud-wave-timer">${Math.ceil(this.engine.waveTimer)}s</strong>
+          </div>
+          <div class="currency-pill gold-pill">
+            <span>🪙</span>
+            <strong id="hud-gold">${save.gold.toLocaleString()}</strong>
+          </div>
+          <div class="currency-pill gem-pill hide-on-tiny">
+            <span>💎</span>
+            <strong id="hud-gems">${save.gems.toLocaleString()}</strong>
+          </div>
+        </div>
+
+        <div class="hud-right">
+          <button id="btn-speed-toggle" class="btn-hud ${isSpeed2x ? 'active-speed' : ''}" title="Toggle Turbo Speed (1x / 2x)">
+            ${isSpeed2x ? '⚡ 2x' : '⚡ 1x'}
+          </button>
+          <button id="btn-sound-toggle" class="btn-hud" title="Audio Mute Toggle">
+            ${save.soundEnabled ? '🔊' : '🔇'}
+          </button>
+          <button id="btn-hud-home" class="btn-hud btn-hud-home" title="Return to Main Menu (Auto-saves progress)">
+            🏠 <span class="hide-on-mobile">${I18n.t('btn_main_menu')}</span>
+          </button>
+        </div>
+      </header>
+      `;
+    }
+
+    // 2. MAIN MENU TOP HUD: Full desktop/mobile management bar
+    return `
+      <header class="top-hud menu-hud">
+        <div class="hud-left">
           <div class="currency-pill gold-pill">
             <span>🪙</span>
             <strong id="hud-gold">${save.gold.toLocaleString()}</strong>
@@ -152,13 +195,8 @@ export class UIManager {
         </div>
 
         <div class="hud-right">
-          ${
-            this.engine.state !== 'MENU'
-              ? `<button id="btn-hud-home" class="btn-hud" style="border-color: rgba(244,63,94,0.55); color: #fda4af" title="Return to Main Menu">${I18n.t('btn_main_menu')}</button>`
-              : ''
-          }
-          <button id="btn-speed-toggle" class="btn-hud ${isSpeed2x ? 'active-speed' : ''}">
-            ⚡ ${isSpeed2x ? I18n.t('speed_2x_on') : I18n.t('speed_1x_btn')}
+          <button id="btn-theme-toggle" class="btn-hud" title="Switch Arena Visual Theme">
+            🎨 ${this.getThemeHudLabel(save.selectedTheme)}
           </button>
           <button id="btn-open-crates" class="btn-hud">
             🎁 ${I18n.t('hud_crates_btn')}
@@ -253,6 +291,18 @@ export class UIManager {
       save.save();
       (e.currentTarget as HTMLElement).textContent = save.data.soundEnabled ? '🔊' : '🔇';
     });
+
+    document.getElementById('btn-theme-toggle')?.addEventListener('click', () => {
+      AudioManager.getInstance().playClick();
+      const themes: ArenaThemeId[] = ['auto', 'cyber_nebula', 'solar_inferno', 'cryo_glacier', 'emerald_matrix'];
+      const save = SaveManager.getInstance();
+      const cur = save.data.selectedTheme || 'auto';
+      const next = themes[(themes.indexOf(cur) + 1) % themes.length];
+      save.setArenaTheme(next);
+      this.engine.applyCurrentTheme();
+      if (this.engine.state === 'MENU') this.renderMainMenu();
+      else this.resetToInGameHud();
+    });
   }
 
   // Alias for updateHUD
@@ -326,6 +376,17 @@ export class UIManager {
           <h1 class="game-title">NEXUS SURVIVORS<span>${I18n.t('game_subtitle')}</span></h1>
           <p class="hero-subtitle">${I18n.t('hero_desc')}</p>
 
+          <div class="theme-switch-container">
+            <span class="theme-switch-label">${I18n.t('theme_selector_title')}</span>
+            <div class="theme-switch-pills">
+              <button data-theme="auto" class="btn-theme-pill ${d.selectedTheme === 'auto' ? 'active-theme' : ''}">${I18n.t('theme_auto')}</button>
+              <button data-theme="cyber_nebula" class="btn-theme-pill ${d.selectedTheme === 'cyber_nebula' ? 'active-theme' : ''}">${I18n.t('theme_nebula')}</button>
+              <button data-theme="solar_inferno" class="btn-theme-pill ${d.selectedTheme === 'solar_inferno' ? 'active-theme' : ''}">${I18n.t('theme_solar')}</button>
+              <button data-theme="cryo_glacier" class="btn-theme-pill ${d.selectedTheme === 'cryo_glacier' ? 'active-theme' : ''}">${I18n.t('theme_cryo')}</button>
+              <button data-theme="emerald_matrix" class="btn-theme-pill ${d.selectedTheme === 'emerald_matrix' ? 'active-theme' : ''}">${I18n.t('theme_matrix')}</button>
+            </div>
+          </div>
+
           <div class="stats-banner">
             <div><span>${I18n.t('stat_highest_wave')}</span><strong>${I18n.t('wave_label')} ${d.highestWave}</strong></div>
             <div><span>${I18n.t('stat_high_score')}</span><strong>${d.highScore.toLocaleString()}</strong></div>
@@ -392,6 +453,18 @@ export class UIManager {
       AudioManager.getInstance().playClick();
       save.setLanguage('tr');
       this.renderMainMenu();
+    });
+
+    this.uiLayer.querySelectorAll('[data-theme]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        const theme = (e.currentTarget as HTMLElement).dataset.theme as ArenaThemeId;
+        if (theme) {
+          AudioManager.getInstance().playClick();
+          save.setArenaTheme(theme);
+          this.engine.applyCurrentTheme();
+          this.renderMainMenu();
+        }
+      });
     });
 
     document.getElementById('btn-continue-run')?.addEventListener('click', () => {

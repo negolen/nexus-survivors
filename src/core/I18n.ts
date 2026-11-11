@@ -105,7 +105,15 @@ const DICTIONARY: Record<LangCode, Record<string, string>> = {
     col_rank: 'RANK',
     col_commander: 'COMMANDER',
     col_wave: 'MAX WAVE',
-    col_score: 'HIGH SCORE'
+    col_score: 'HIGH SCORE',
+    // Phase 4: Multiple Arena Themes
+    theme_selector_title: '🎨 ARENA THEME',
+    theme_auto: '🔄 AUTO (CHANGES EVERY 5 WAVES)',
+    theme_nebula: '🌌 CYBER NEBULA',
+    theme_solar: '🔥 SOLAR INFERNO',
+    theme_cryo: '❄️ CRYO GLACIER',
+    theme_matrix: '🟩 MATRIX EMERALD',
+    hud_theme_btn: 'THEME'
   },
   tr: {
     hero_badge: '3D WEBGL • GELİR MODELİ HAZIR • 60FPS ROGUELITE',
@@ -211,7 +219,15 @@ const DICTIONARY: Record<LangCode, Record<string, string>> = {
     col_rank: 'SIRA',
     col_commander: 'KOMUTAN',
     col_wave: 'MAKS DALGA',
-    col_score: 'REKOR SKOR'
+    col_score: 'REKOR SKOR',
+    // Phase 4: Multiple Arena Themes
+    theme_selector_title: '🎨 ARENA TEMASI',
+    theme_auto: '🔄 OTOMATİK (HER 5 DALGADA BİR DEĞİŞİR)',
+    theme_nebula: '🌌 SİBER NEBULA',
+    theme_solar: '🔥 SOLAR CEHENNEM',
+    theme_cryo: '❄️ CRYO BUZUL',
+    theme_matrix: '🟩 MATRİKS ZÜMRÜT',
+    hud_theme_btn: 'TEMA'
   }
 };
 
