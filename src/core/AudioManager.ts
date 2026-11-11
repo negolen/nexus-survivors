@@ -3,6 +3,7 @@ import { SaveManager } from './SaveManager';
 export class AudioManager {
   private static instance: AudioManager;
   private ctx: AudioContext | null = null;
+  private adMuted = false;
 
   private constructor() {}
 
@@ -13,8 +14,12 @@ export class AudioManager {
     return AudioManager.instance;
   }
 
+  public setAdMuted(muted: boolean): void {
+    this.adMuted = muted;
+  }
+
   private ensureContext(): AudioContext | null {
-    if (!SaveManager.getInstance().data.soundEnabled) return null;
+    if (this.adMuted || !SaveManager.getInstance().data.soundEnabled) return null;
     if (!this.ctx) {
       const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       if (AudioCtx) {

@@ -1,6 +1,6 @@
 import { AudioManager } from '../core/AudioManager';
 import { I18n } from '../core/I18n';
-import { CommanderId, MetaUpgrades, SaveManager } from '../core/SaveManager';
+import { CommanderId, CrateLootResult, MetaUpgrades, MissionTiers, SaveManager } from '../core/SaveManager';
 import { GameEngine, TACTICAL_CARDS_POOL, TacticalCard } from '../game/GameEngine';
 import {
   TIER_COLORS,
@@ -17,6 +17,30 @@ interface ShopOffer {
   cost: number;
   purchased: boolean;
 }
+
+interface LeaderboardEntry {
+  name: string;
+  wave: number;
+  score: number;
+  vip: boolean;
+  isPlayer?: boolean;
+}
+
+const GLOBAL_RIVALS: LeaderboardEntry[] = [
+  { name: 'NEXUS_OVERLORD', wave: 38, score: 194500, vip: true },
+  { name: 'VALKYRIE_X9', wave: 34, score: 162800, vip: true },
+  { name: 'KRONOS_PRIME', wave: 30, score: 138400, vip: true },
+  { name: 'CYBER_SHOGUN', wave: 27, score: 112900, vip: false },
+  { name: 'ZERO_COOL_US', wave: 24, score: 94200, vip: true },
+  { name: 'NOVA_STRIKER', wave: 21, score: 78500, vip: false },
+  { name: 'AETHER_WOLF', wave: 18, score: 61400, vip: true },
+  { name: 'VOLT_HUNTER', wave: 15, score: 45200, vip: false },
+  { name: 'PHANTOM_BLADE', wave: 12, score: 31800, vip: false },
+  { name: 'OMEGA_DRIFTER', wave: 10, score: 22400, vip: false },
+  { name: 'BYTE_RANGER', wave: 8, score: 14900, vip: false },
+  { name: 'NEON_ROOKIE', wave: 5, score: 7600, vip: false },
+  { name: 'SCRAP_PILOT', wave: 3, score: 3200, vip: false }
+];
 
 export class UIManager {
   private engine: GameEngine;
@@ -86,6 +110,15 @@ export class UIManager {
           <button id="btn-speed-toggle" class="btn-hud ${isSpeed2x ? 'active-speed' : ''}">
             ⚡ ${isSpeed2x ? I18n.t('speed_2x_on') : I18n.t('speed_1x_btn')}
           </button>
+          <button id="btn-open-crates" class="btn-hud">
+            🎁 ${I18n.t('hud_crates_btn')}
+          </button>
+          <button id="btn-open-missions" class="btn-hud">
+            📋 ${I18n.t('hud_missions_btn')}
+          </button>
+          <button id="btn-open-ranks" class="btn-hud">
+            🏆 ${I18n.t('hud_ranks_btn')}
+          </button>
           <button id="btn-open-store" class="btn-hud btn-vip">
             💎 ${I18n.t('vip_store_btn')}
           </button>
@@ -122,6 +155,21 @@ export class UIManager {
           this.updateTopHudValues();
         }
       }
+    });
+
+    document.getElementById('btn-open-crates')?.addEventListener('click', () => {
+      AudioManager.getInstance().playClick();
+      this.openCratesModal();
+    });
+
+    document.getElementById('btn-open-missions')?.addEventListener('click', () => {
+      AudioManager.getInstance().playClick();
+      this.openMissionsModal();
+    });
+
+    document.getElementById('btn-open-ranks')?.addEventListener('click', () => {
+      AudioManager.getInstance().playClick();
+      this.openLeaderboardModal();
     });
 
     document.getElementById('btn-open-store')?.addEventListener('click', () => {
@@ -218,6 +266,9 @@ export class UIManager {
           <div class="menu-actions">
             <button id="btn-start-run" class="btn-primary btn-xl pulse-glow">${I18n.t('btn_start_run')}</button>
             <button id="btn-free-gold-ad" class="btn-ad">${I18n.t('btn_free_gold_ad')}</button>
+            <button id="btn-menu-crates" class="btn-gold">🎁 ${I18n.t('hud_crates_btn')}</button>
+            <button id="btn-menu-missions" class="btn-secondary">📋 ${I18n.t('hud_missions_btn')}</button>
+            <button id="btn-menu-ranks" class="btn-secondary">🏆 ${I18n.t('hud_ranks_btn')}</button>
           </div>
         </div>
       </div>
@@ -240,6 +291,21 @@ export class UIManager {
         save.addGems(10);
         this.renderMainMenu();
       }
+    });
+
+    document.getElementById('btn-menu-crates')?.addEventListener('click', () => {
+      AudioManager.getInstance().playClick();
+      this.openCratesModal();
+    });
+
+    document.getElementById('btn-menu-missions')?.addEventListener('click', () => {
+      AudioManager.getInstance().playClick();
+      this.openMissionsModal();
+    });
+
+    document.getElementById('btn-menu-ranks')?.addEventListener('click', () => {
+      AudioManager.getInstance().playClick();
+      this.openLeaderboardModal();
     });
 
     this.uiLayer.querySelectorAll('[data-cmd-select]').forEach((btn) => {
@@ -351,7 +417,6 @@ export class UIManager {
   }
 
   public openLevelUpModal(): void {
-    // Pick 3 distinct cards from TACTICAL_CARDS_POOL
     const shuffled = [...TACTICAL_CARDS_POOL].sort(() => Math.random() - 0.5);
     this.draftedLevelCards = shuffled.slice(0, 3);
     this.renderLevelUpModal();
@@ -718,7 +783,352 @@ export class UIManager {
     });
   }
 
+  // PHASE 3A: CYBER SUPPLY CRATE (GACHA) MODAL
+  public openCratesModal(lastLoot?: CrateLootResult): void {
+    document.getElementById('crates-modal')?.remove();
+    const save = SaveManager.getInstance();
+    const prevState = this.engine.state;
+    this.engine.setSdkPause(true);
+
+    const modalEl = document.createElement('div');
+    modalEl.id = 'crates-modal';
+    modalEl.className = 'modal-backdrop';
+    const shards = save.data.techShards;
+
+    modalEl.innerHTML = `
+      <div class="cyber-panel store-panel">
+        <div class="workshop-header">
+          <div>
+            <h2>${I18n.t('crates_modal_title')}</h2>
+            <p>${I18n.t('crates_modal_sub')}</p>
+          </div>
+          <button id="btn-close-crates" class="btn-secondary">✕ Close</button>
+        </div>
+
+        <div class="shards-banner">
+          ${I18n.t('tech_shards_banner', { shards, bonus: shards * 3 })}
+        </div>
+
+        ${
+          lastLoot
+            ? `
+          <div class="crate-loot-reveal pulse-glow">
+            <h4>${I18n.t('crate_rewards_header')}</h4>
+            <div class="loot-pills">
+              <span class="loot-pill">🪙 +${lastLoot.gold} Gold</span>
+              <span class="loot-pill">💎 +${lastLoot.gems} Gems</span>
+              ${lastLoot.techShards > 0 ? `<span class="loot-pill shard-pill">⚙️ +${lastLoot.techShards} Tech Shards (+${lastLoot.techShards * 3}% DMG)</span>` : ''}
+            </div>
+          </div>
+        `
+            : ''
+        }
+
+        <div class="iap-grid">
+          <div class="iap-card">
+            <span class="iap-badge">FREE AD DROP</span>
+            <div class="crate-big-icon">📦</div>
+            <h3>${I18n.t('crate_free_title')}</h3>
+            <p>${I18n.t('crate_free_desc')}</p>
+            <button id="btn-open-ad-crate" class="btn-ad">${I18n.t('crate_free_btn')}</button>
+          </div>
+
+          <div class="iap-card">
+            <div class="crate-big-icon">🎁</div>
+            <h3>${I18n.t('crate_1x_title')}</h3>
+            <p>${I18n.t('crate_1x_desc')}</p>
+            <button id="btn-open-1x-crate" class="btn-primary">${I18n.t('crate_1x_btn')}</button>
+          </div>
+
+          <div class="iap-card">
+            <span class="iap-badge">JACKPOT VALUE</span>
+            <div class="crate-big-icon">🌌</div>
+            <h3>${I18n.t('crate_10x_title')}</h3>
+            <p>${I18n.t('crate_10x_desc')}</p>
+            <button id="btn-open-10x-crate" class="btn-gold">${I18n.t('crate_10x_btn')}</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    this.uiLayer.appendChild(modalEl);
+
+    const closeCrates = () => {
+      modalEl.remove();
+      this.engine.setSdkPause(false);
+      if (prevState === 'MENU') this.renderMainMenu();
+      else if (prevState === 'SHOP') this.renderWorkshopModal();
+      else this.updateTopHudValues();
+    };
+
+    document.getElementById('btn-close-crates')?.addEventListener('click', closeCrates);
+
+    document.getElementById('btn-open-ad-crate')?.addEventListener('click', async () => {
+      const ok = await MonetizationManager.getInstance().showRewardedAd('Open Free Cyber Supply Crate');
+      if (ok) {
+        const res = save.rollSupplyCrate(1, false);
+        AudioManager.getInstance().playMerge(5);
+        this.openCratesModal(res);
+      }
+    });
+
+    document.getElementById('btn-open-1x-crate')?.addEventListener('click', () => {
+      if (save.spendGems(80)) {
+        const res = save.rollSupplyCrate(1, true);
+        AudioManager.getInstance().playMerge(4);
+        this.openCratesModal(res);
+      } else {
+        modalEl.remove();
+        this.openStoreModal();
+      }
+    });
+
+    document.getElementById('btn-open-10x-crate')?.addEventListener('click', () => {
+      if (save.spendGems(700)) {
+        const res = save.rollSupplyCrate(10, true);
+        AudioManager.getInstance().playMerge(5);
+        this.openCratesModal(res);
+      } else {
+        modalEl.remove();
+        this.openStoreModal();
+      }
+    });
+  }
+
+  // PHASE 3A: DAILY MISSIONS & ACHIEVEMENTS MODAL
+  public openMissionsModal(): void {
+    document.getElementById('missions-modal')?.remove();
+    const save = SaveManager.getInstance();
+    const d = save.data;
+    const prevState = this.engine.state;
+    this.engine.setSdkPause(true);
+
+    const missions: Array<{
+      tierKey: keyof MissionTiers;
+      title: string;
+      desc: string;
+      current: number;
+      target: number;
+      rewardGold: number;
+      rewardGems: number;
+    }> = [
+      {
+        tierKey: 'killsTier',
+        title: I18n.t('mission_kill_title'),
+        desc: I18n.t('mission_kill_desc', { target: d.missionTiers.killsTier * 60 }),
+        current: d.totalKills,
+        target: d.missionTiers.killsTier * 60,
+        rewardGold: 250 * d.missionTiers.killsTier,
+        rewardGems: 20
+      },
+      {
+        tierKey: 'mergesTier',
+        title: I18n.t('mission_merge_title'),
+        desc: I18n.t('mission_merge_desc', { target: d.missionTiers.mergesTier * 4 }),
+        current: d.totalMerges,
+        target: d.missionTiers.mergesTier * 4,
+        rewardGold: 300 * d.missionTiers.mergesTier,
+        rewardGems: 25
+      },
+      {
+        tierKey: 'waveTier',
+        title: I18n.t('mission_wave_title'),
+        desc: I18n.t('mission_wave_desc', { target: d.missionTiers.waveTier * 3 }),
+        current: d.highestWave,
+        target: d.missionTiers.waveTier * 3,
+        rewardGold: 400 * d.missionTiers.waveTier,
+        rewardGems: 35
+      },
+      {
+        tierKey: 'levelUpsTier',
+        title: I18n.t('mission_lvl_title'),
+        desc: I18n.t('mission_lvl_desc', { target: d.missionTiers.levelUpsTier * 3 }),
+        current: d.totalLevelUps,
+        target: d.missionTiers.levelUpsTier * 3,
+        rewardGold: 250 * d.missionTiers.levelUpsTier,
+        rewardGems: 20
+      }
+    ];
+
+    const modalEl = document.createElement('div');
+    modalEl.id = 'missions-modal';
+    modalEl.className = 'modal-backdrop';
+    modalEl.innerHTML = `
+      <div class="cyber-panel store-panel">
+        <div class="workshop-header">
+          <div>
+            <h2>${I18n.t('missions_modal_title')}</h2>
+            <p>${I18n.t('missions_modal_sub')}</p>
+          </div>
+          <button id="btn-close-missions" class="btn-secondary">✕ Close</button>
+        </div>
+
+        <div class="missions-list">
+          ${missions
+            .map((m, idx) => {
+              const pct = Math.min(100, Math.round((m.current / m.target) * 100));
+              const ready = m.current >= m.target;
+              return `
+                <div class="mission-row ${ready ? 'mission-ready' : ''}">
+                  <div class="mission-details">
+                    <h4>${m.title} <span class="lvl-tag">Tier ${d.missionTiers[m.tierKey]}</span></h4>
+                    <p>${m.desc} (${Math.min(m.current, m.target)} / ${m.target})</p>
+                    <div class="mission-prog-wrap">
+                      <div class="mission-prog-fill" style="width: ${pct}%"></div>
+                    </div>
+                  </div>
+                  <div class="mission-rewards">
+                    <span class="reward-tag">🪙 ${m.rewardGold} + 💎 ${m.rewardGems}</span>
+                    ${
+                      ready
+                        ? `
+                      <div class="mission-claim-btns">
+                        <button data-claim-idx="${idx}" data-claim-mult="1" class="btn-primary">${I18n.t('btn_claim_mission')}</button>
+                        <button data-claim-idx="${idx}" data-claim-mult="2" class="btn-ad">${I18n.t('btn_claim_2x_ad')}</button>
+                      </div>
+                    `
+                        : `<button class="btn-secondary" disabled>${I18n.t('mission_in_progress')}</button>`
+                    }
+                  </div>
+                </div>
+              `;
+            })
+            .join('')}
+        </div>
+      </div>
+    `;
+
+    this.uiLayer.appendChild(modalEl);
+
+    const closeMissions = () => {
+      modalEl.remove();
+      this.engine.setSdkPause(false);
+      if (prevState === 'MENU') this.renderMainMenu();
+      else if (prevState === 'SHOP') this.renderWorkshopModal();
+      else this.updateTopHudValues();
+    };
+
+    document.getElementById('btn-close-missions')?.addEventListener('click', closeMissions);
+
+    modalEl.querySelectorAll('[data-claim-idx]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const idx = Number((btn as HTMLElement).dataset.claimIdx);
+        const mult = Number((btn as HTMLElement).dataset.claimMult);
+        const m = missions[idx];
+        if (!m || m.current < m.target) return;
+
+        if (mult === 2) {
+          const ok = await MonetizationManager.getInstance().showRewardedAd(`2x Mission Bounty: ${m.title}`);
+          if (!ok) return;
+        }
+
+        save.addGold(m.rewardGold * mult);
+        save.addGems(m.rewardGems * mult);
+        save.data.missionTiers[m.tierKey] += 1;
+        save.save();
+        AudioManager.getInstance().playCashRegister();
+        this.openMissionsModal();
+      });
+    });
+  }
+
+  // PHASE 3B: GLOBAL ARENA LEADERBOARD MODAL
+  public openLeaderboardModal(): void {
+    document.getElementById('leaderboard-modal')?.remove();
+    const save = SaveManager.getInstance();
+    const d = save.data;
+    const prevState = this.engine.state;
+    this.engine.setSdkPause(true);
+
+    const allEntries: LeaderboardEntry[] = [
+      ...GLOBAL_RIVALS,
+      {
+        name: d.playerName || 'CYBER_COMMANDER',
+        wave: d.highestWave,
+        score: d.highScore,
+        vip: d.vipUnlocked,
+        isPlayer: true
+      }
+    ].sort((a, b) => b.score - a.score || b.wave - a.wave);
+
+    const modalEl = document.createElement('div');
+    modalEl.id = 'leaderboard-modal';
+    modalEl.className = 'modal-backdrop';
+    modalEl.innerHTML = `
+      <div class="cyber-panel store-panel">
+        <div class="workshop-header">
+          <div>
+            <h2>${I18n.t('leaderboard_title')}</h2>
+            <p>${I18n.t('leaderboard_sub')}</p>
+          </div>
+          <button id="btn-close-ranks" class="btn-secondary">✕ Close</button>
+        </div>
+
+        <div class="callsign-bar">
+          <label for="input-callsign">${I18n.t('callsign_label')}</label>
+          <input id="input-callsign" type="text" maxlength="18" value="${d.playerName}" />
+          <button id="btn-save-callsign" class="btn-primary">${I18n.t('btn_save_callsign')}</button>
+        </div>
+
+        <div class="leaderboard-table-wrap">
+          <table class="leaderboard-table">
+            <thead>
+              <tr>
+                <th>${I18n.t('col_rank')}</th>
+                <th>${I18n.t('col_commander')}</th>
+                <th>${I18n.t('col_wave')}</th>
+                <th>${I18n.t('col_score')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${allEntries
+                .map(
+                  (entry, i) => `
+                <tr class="${entry.isPlayer ? 'player-rank-row' : ''}">
+                  <td><strong>#${i + 1}</strong></td>
+                  <td>
+                    ${entry.name}
+                    ${entry.vip ? `<span class="vip-tag">VIP</span>` : ''}
+                    ${entry.isPlayer ? `<span class="you-tag">YOU</span>` : ''}
+                  </td>
+                  <td>${I18n.t('wave_label')} ${entry.wave}</td>
+                  <td><strong>${entry.score.toLocaleString()}</strong></td>
+                </tr>
+              `
+                )
+                .join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+
+    this.uiLayer.appendChild(modalEl);
+
+    const closeRanks = () => {
+      modalEl.remove();
+      this.engine.setSdkPause(false);
+      if (prevState === 'MENU') this.renderMainMenu();
+      else if (prevState === 'SHOP') this.renderWorkshopModal();
+      else this.updateTopHudValues();
+    };
+
+    document.getElementById('btn-close-ranks')?.addEventListener('click', closeRanks);
+
+    document.getElementById('btn-save-callsign')?.addEventListener('click', () => {
+      const input = document.getElementById('input-callsign') as HTMLInputElement | null;
+      const cleaned = (input?.value || '').trim().toUpperCase().slice(0, 18);
+      if (cleaned) {
+        save.data.playerName = cleaned;
+        save.save();
+        AudioManager.getInstance().playClick();
+        this.openLeaderboardModal();
+      }
+    });
+  }
+
   public openStoreModal(): void {
+    document.getElementById('vip-store-modal')?.remove();
     const save = SaveManager.getInstance();
     const prevState = this.engine.state;
     this.engine.setSdkPause(true);

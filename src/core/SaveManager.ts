@@ -10,14 +10,33 @@ export interface MetaUpgrades {
   attackSpeedLevel: number;
 }
 
+export interface MissionTiers {
+  killsTier: number;
+  mergesTier: number;
+  waveTier: number;
+  levelUpsTier: number;
+}
+
+export interface CrateLootResult {
+  gold: number;
+  gems: number;
+  techShards: number;
+}
+
 export interface SaveData {
   language: LangCode;
+  playerName: string;
   selectedCommander: CommanderId;
   unlockedCommanders: CommanderId[];
   gold: number;
   gems: number;
+  techShards: number;
   highScore: number;
   highestWave: number;
+  totalKills: number;
+  totalMerges: number;
+  totalLevelUps: number;
+  missionTiers: MissionTiers;
   vipUnlocked: boolean;
   starterPackBought: boolean;
   totalRevenueSimulated: number;
@@ -32,12 +51,23 @@ const STORAGE_KEY = 'nexus_survivors_save_v1';
 
 const DEFAULT_SAVE: SaveData = {
   language: 'en', // Strict English default
+  playerName: 'CYBER_COMMANDER',
   selectedCommander: 'vanguard',
   unlockedCommanders: ['vanguard'],
   gold: 150,
   gems: 25,
+  techShards: 0,
   highScore: 0,
   highestWave: 1,
+  totalKills: 0,
+  totalMerges: 0,
+  totalLevelUps: 0,
+  missionTiers: {
+    killsTier: 1,
+    mergesTier: 1,
+    waveTier: 1,
+    levelUpsTier: 1
+  },
   vipUnlocked: false,
   starterPackBought: false,
   totalRevenueSimulated: 0,
@@ -83,6 +113,10 @@ export class SaveManager {
         unlockedCommanders: Array.isArray(parsed.unlockedCommanders)
           ? parsed.unlockedCommanders
           : ['vanguard'],
+        missionTiers: {
+          ...DEFAULT_SAVE.missionTiers,
+          ...(parsed.missionTiers || {})
+        },
         meta: {
           ...DEFAULT_SAVE.meta,
           ...(parsed.meta || {})
@@ -125,6 +159,56 @@ export class SaveManager {
     }
     this.data.selectedCommander = id;
     this.save();
+  }
+
+  public recordKill(count = 1): void {
+    this.data.totalKills += count;
+    this.save();
+  }
+
+  public recordMerge(count = 1): void {
+    this.data.totalMerges += count;
+    this.save();
+  }
+
+  public recordLevelUp(count = 1): void {
+    this.data.totalLevelUps += count;
+    this.save();
+  }
+
+  public rollSupplyCrate(rollsCount: number, isPremium: boolean): CrateLootResult {
+    let totalGold = 0;
+    let totalGems = 0;
+    let totalShards = 0;
+
+    for (let i = 0; i < rollsCount; i++) {
+      const goldRoll = isPremium
+        ? 400 + Math.floor(Math.random() * 550)
+        : 250 + Math.floor(Math.random() * 350);
+      const gemRoll = isPremium
+        ? 15 + Math.floor(Math.random() * 35)
+        : 15 + Math.floor(Math.random() * 25);
+      const shardRoll = isPremium
+        ? 1 + Math.floor(Math.random() * 3)
+        : Math.random() < 0.65
+        ? 1
+        : 0;
+
+      totalGold += goldRoll;
+      totalGems += gemRoll;
+      totalShards += shardRoll;
+    }
+
+    this.data.gold += totalGold;
+    this.data.gems += totalGems;
+    this.data.techShards += totalShards;
+    this.save();
+
+    return {
+      gold: totalGold,
+      gems: totalGems,
+      techShards: totalShards
+    };
   }
 
   public onChange(cb: () => void): void {
@@ -190,7 +274,8 @@ export class SaveManager {
 
   public getDamageMultiplier(): number {
     const cmdBonus = this.data.selectedCommander === 'tesla_engineer' ? 0.2 : 0;
-    return 1 + this.data.meta.damageLevel * 0.15 + cmdBonus;
+    const shardBonus = this.data.techShards * 0.03;
+    return 1 + this.data.meta.damageLevel * 0.15 + cmdBonus + shardBonus;
   }
 
   public getBonusMaxHp(): number {

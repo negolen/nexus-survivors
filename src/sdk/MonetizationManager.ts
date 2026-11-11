@@ -106,10 +106,14 @@ export class MonetizationManager {
    */
   public async showRewardedAd(placementName: string): Promise<boolean> {
     this.onPauseGame?.();
+    AudioManager.getInstance().setAdMuted(true);
+    window.PokiSDK?.gameplayStop?.();
 
     if (this.activePlatform === 'Poki' && window.PokiSDK) {
       try {
         const success = await window.PokiSDK.rewardedBreak();
+        AudioManager.getInstance().setAdMuted(false);
+        window.PokiSDK.gameplayStart?.();
         if (success) {
           SaveManager.getInstance().recordAdRevenue('rewarded', 25.0);
           AudioManager.getInstance().playCashRegister();
@@ -117,6 +121,7 @@ export class MonetizationManager {
         this.onResumeGame?.();
         return success;
       } catch {
+        AudioManager.getInstance().setAdMuted(false);
         this.onResumeGame?.();
         return false;
       }
@@ -126,12 +131,14 @@ export class MonetizationManager {
       return new Promise((resolve) => {
         window.CrazyGames!.SDK!.ad!.requestAd('rewarded', {
           adFinished: () => {
+            AudioManager.getInstance().setAdMuted(false);
             SaveManager.getInstance().recordAdRevenue('rewarded', 25.0);
             AudioManager.getInstance().playCashRegister();
             this.onResumeGame?.();
             resolve(true);
           },
           adError: () => {
+            AudioManager.getInstance().setAdMuted(false);
             this.onResumeGame?.();
             resolve(false);
           }
@@ -237,6 +244,7 @@ export class MonetizationManager {
       const cleanup = (result: boolean) => {
         window.clearInterval(interval);
         if (this.overlayContainer) this.overlayContainer.innerHTML = '';
+        AudioManager.getInstance().setAdMuted(false);
         if (result) {
           SaveManager.getInstance().recordAdRevenue('rewarded', 25.0);
           AudioManager.getInstance().playCashRegister();
@@ -281,6 +289,7 @@ export class MonetizationManager {
 
       document.getElementById('sdk-close-interstitial')?.addEventListener('click', () => {
         if (this.overlayContainer) this.overlayContainer.innerHTML = '';
+        AudioManager.getInstance().setAdMuted(false);
         SaveManager.getInstance().recordAdRevenue('interstitial', 12.0);
         AudioManager.getInstance().playCashRegister();
         this.onResumeGame?.();

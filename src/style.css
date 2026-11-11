@@ -684,6 +684,202 @@ button:disabled, button.disabled {
   border-radius: 12px;
 }
 
+/* PHASE 3A: CRATES & MISSIONS */
+.shards-banner {
+  background: rgba(168, 85, 247, 0.18);
+  border: 1px solid rgba(168, 85, 247, 0.5);
+  color: #e9d5ff;
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.88rem;
+  padding: 10px 14px;
+  border-radius: 10px;
+  text-align: center;
+  margin-bottom: 14px;
+}
+
+.crate-big-icon {
+  font-size: 2.6rem;
+  text-align: center;
+}
+
+.crate-loot-reveal {
+  background: rgba(20, 83, 45, 0.45);
+  border: 2px solid #4ade80;
+  border-radius: 12px;
+  padding: 14px;
+  text-align: center;
+  margin-bottom: 14px;
+}
+
+.crate-loot-reveal h4 {
+  font-family: 'Orbitron', sans-serif;
+  color: #4ade80;
+  margin-bottom: 8px;
+}
+
+.loot-pills {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+}
+
+.loot-pill {
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid var(--border-cyan);
+  padding: 6px 12px;
+  border-radius: 99px;
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.82rem;
+}
+
+.shard-pill {
+  border-color: #c084fc;
+  color: #e9d5ff;
+}
+
+.missions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.mission-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  background: rgba(30, 41, 59, 0.72);
+  border: 1.5px solid rgba(148, 163, 184, 0.25);
+  border-radius: 12px;
+  padding: 14px;
+}
+
+.mission-row.mission-ready {
+  border-color: #4ade80;
+  box-shadow: 0 0 18px rgba(74, 222, 128, 0.2);
+}
+
+.mission-details {
+  flex: 1;
+  min-width: 220px;
+}
+
+.mission-prog-wrap {
+  width: 100%;
+  height: 10px;
+  background: rgba(15, 23, 42, 0.9);
+  border-radius: 99px;
+  overflow: hidden;
+  margin-top: 8px;
+}
+
+.mission-prog-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #22c55e, #38bdf8);
+}
+
+.mission-rewards {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.reward-tag {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.82rem;
+  color: var(--neon-gold);
+}
+
+.mission-claim-btns {
+  display: flex;
+  gap: 8px;
+}
+
+/* PHASE 3B: LEADERBOARD */
+.callsign-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid var(--border-cyan);
+  padding: 10px 14px;
+  border-radius: 10px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.callsign-bar label {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.8rem;
+  color: var(--neon-blue);
+}
+
+.callsign-bar input {
+  background: #020617;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  color: #fff;
+  font-family: 'Orbitron', sans-serif;
+  padding: 7px 12px;
+  border-radius: 6px;
+  font-size: 0.88rem;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.leaderboard-table-wrap {
+  max-height: 360px;
+  overflow-y: auto;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 10px;
+}
+
+.leaderboard-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.leaderboard-table th, .leaderboard-table td {
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.leaderboard-table th {
+  background: rgba(2, 6, 23, 0.9);
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  position: sticky;
+  top: 0;
+}
+
+.player-rank-row {
+  background: rgba(56, 189, 248, 0.18);
+  color: #fff;
+}
+
+.vip-tag, .you-tag {
+  display: inline-block;
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.62rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-left: 6px;
+}
+
+.vip-tag {
+  background: #a855f7;
+  color: #fff;
+}
+
+.you-tag {
+  background: #22c55e;
+  color: #052e16;
+}
+
 /* SDK AD & STRIPE SIMULATOR OVERLAY */
 .sdk-modal-backdrop {
   position: fixed;

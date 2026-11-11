@@ -251,6 +251,11 @@ export class GameEngine {
 
   private bindInputs(): void {
     window.addEventListener('keydown', (e) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) {
+        e.preventDefault();
+      }
       this.keys.add(e.code);
     });
     window.addEventListener('keyup', (e) => {
@@ -609,6 +614,7 @@ export class GameEngine {
             this.player.xp -= this.player.xpToNext;
             this.player.level += 1;
             this.player.xpToNext = Math.round(this.player.xpToNext * 1.38 + 20);
+            save.recordLevelUp(1);
             leveledUp = true;
           }
         }
@@ -825,6 +831,7 @@ export class GameEngine {
       if (idx !== -1) this.enemies.splice(idx, 1);
 
       this.runKills += 1;
+      SaveManager.getInstance().recordKill(1);
       this.runScore += e.goldValue * 10;
       this.spawnParticles(e.x, e.y, e.color, e.type === 'boss' ? 30 : 8);
 

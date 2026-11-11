@@ -1,4 +1,5 @@
 import { AudioManager } from '../core/AudioManager';
+import { SaveManager } from '../core/SaveManager';
 
 export type WeaponArchetypeId = 'plasma' | 'tesla' | 'frost' | 'sawblade' | 'missile';
 
@@ -170,6 +171,7 @@ export class WeaponSystem {
       const upgraded = this.createWeapon(itemA.archetype, itemA.tier + 1);
       targetList[toIndex] = upgraded;
       sourceList[fromIndex] = null;
+      SaveManager.getInstance().recordMerge(1);
       AudioManager.getInstance().playMerge(upgraded.tier);
       return { action: 'merged', newTier: upgraded.tier };
     }
