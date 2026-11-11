@@ -1,0 +1,7 @@
+# AI Agent Token Optimization Ignore File
+node_modules/
+dist/
+package-lock.json
+*.zip
+.git/
+.vscode/

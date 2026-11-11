@@ -6,9 +6,17 @@ export default defineConfig({
     port: 3000,
     host: true
   },
+  esbuild: {
+    legalComments: 'none',
+    treeShaking: true
+  },
   build: {
     outDir: 'dist',
     assetsDir: 'assets',
-    sourcemap: false
+    sourcemap: false,
+    target: 'es2022',
+    minify: 'esbuild',
+    cssMinify: true,
+    reportCompressedSize: false
   }
 });

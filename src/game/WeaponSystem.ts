@@ -236,8 +236,9 @@ export class WeaponSystem {
     if (!w) return 0;
 
     // Don't allow selling the player's very last weapon
-    const totalWeapons =
-      this.equipped.filter((x) => x !== null).length + this.bench.filter((x) => x !== null).length;
+    let totalWeapons = 0;
+    for (let i = 0; i < this.equipped.length; i++) if (this.equipped[i] !== null) totalWeapons++;
+    for (let i = 0; i < this.bench.length; i++) if (this.bench[i] !== null) totalWeapons++;
     if (totalWeapons <= 1) return 0;
 
     const bp = WEAPON_BLUEPRINTS[w.archetype];

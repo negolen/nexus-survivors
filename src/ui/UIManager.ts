@@ -50,6 +50,20 @@ export class UIManager {
   private draftedLevelCards: TacticalCard[] = [];
   private waveBonusDoubled = false;
 
+  // Cached DOM references to eliminate 60FPS per-frame document.getElementById queries
+  private hudEls: {
+    hpFill: HTMLElement | null;
+    hpText: HTMLElement | null;
+    xpFill: HTMLElement | null;
+    lvlText: HTMLElement | null;
+    waveNum: HTMLElement | null;
+    waveTimer: HTMLElement | null;
+    gold: HTMLElement | null;
+    gems: HTMLElement | null;
+    rev: HTMLElement | null;
+    speedBtn: HTMLElement | null;
+  } | null = null;
+
   constructor(engine: GameEngine) {
     this.engine = engine;
     const el = document.getElementById('ui-layer');
@@ -64,6 +78,26 @@ export class UIManager {
     SaveManager.getInstance().onChange(() => this.updateTopHudValues());
 
     this.renderMainMenu();
+  }
+
+  private resetToInGameHud(): void {
+    this.uiLayer.innerHTML = this.renderTopHud();
+    this.bindTopHudEvents();
+  }
+
+  private cacheHudElements(): void {
+    this.hudEls = {
+      hpFill: document.getElementById('hud-hp-fill'),
+      hpText: document.getElementById('hud-hp-text'),
+      xpFill: document.getElementById('hud-xp-fill'),
+      lvlText: document.getElementById('hud-lvl-text'),
+      waveNum: document.getElementById('hud-wave-num'),
+      waveTimer: document.getElementById('hud-wave-timer'),
+      gold: document.getElementById('hud-gold'),
+      gems: document.getElementById('hud-gems'),
+      rev: document.getElementById('hud-revenue'),
+      speedBtn: document.getElementById('btn-speed-toggle')
+    };
   }
 
   private renderTopHud(): string {
@@ -134,6 +168,8 @@ export class UIManager {
   }
 
   private bindTopHudEvents(): void {
+    this.cacheHudElements();
+
     document.getElementById('btn-speed-toggle')?.addEventListener('click', async () => {
       AudioManager.getInstance().playClick();
       const save = SaveManager.getInstance();
@@ -184,10 +220,7 @@ export class UIManager {
       else if (this.engine.state === 'SHOP') this.renderWorkshopModal();
       else if (this.engine.state === 'LEVEL_UP') this.renderLevelUpModal();
       else if (this.engine.state === 'REVIVE_PROMPT' || this.engine.state === 'GAMEOVER') this.openDeathModal();
-      else {
-        this.uiLayer.innerHTML = this.renderTopHud();
-        this.bindTopHudEvents();
-      }
+      else this.resetToInGameHud();
     });
 
     document.getElementById('btn-sound-toggle')?.addEventListener('click', (e) => {
@@ -198,33 +231,55 @@ export class UIManager {
     });
   }
 
+  // Alias for updateHUD
+  public updateHUD(): void {
+    this.updateTopHudValues();
+  }
+
   public updateTopHudValues(): void {
+    if (!this.hudEls || !this.hudEls.hpFill) {
+      this.cacheHudElements();
+    }
+    const els = this.hudEls;
+    if (!els || !els.hpFill) return;
+
     const save = SaveManager.getInstance().data;
     const p = this.engine.player;
-    const hpFill = document.getElementById('hud-hp-fill');
-    const hpText = document.getElementById('hud-hp-text');
-    const xpFill = document.getElementById('hud-xp-fill');
-    const lvlText = document.getElementById('hud-lvl-text');
-    const waveNum = document.getElementById('hud-wave-num');
-    const waveTimer = document.getElementById('hud-wave-timer');
-    const goldEl = document.getElementById('hud-gold');
-    const gemsEl = document.getElementById('hud-gems');
-    const revEl = document.getElementById('hud-revenue');
-    const speedBtn = document.getElementById('btn-speed-toggle');
 
-    if (hpFill) hpFill.style.width = `${Math.max(0, Math.min(100, (p.hp / p.maxHp) * 100))}%`;
-    if (hpText) hpText.textContent = `HP ${Math.ceil(p.hp)} / ${p.maxHp}`;
-    if (xpFill) xpFill.style.width = `${Math.max(0, Math.min(100, (p.xp / p.xpToNext) * 100))}%`;
-    if (lvlText) lvlText.textContent = `${I18n.t('lvl_label')} ${p.level}`;
-    if (waveNum) waveNum.textContent = `${I18n.t('wave_label')} ${this.engine.currentWave}`;
-    if (waveTimer) waveTimer.textContent = `${Math.ceil(this.engine.waveTimer)}s`;
-    if (goldEl) goldEl.textContent = save.gold.toLocaleString();
-    if (gemsEl) gemsEl.textContent = save.gems.toLocaleString();
-    if (revEl) revEl.textContent = `$${save.totalRevenueSimulated.toFixed(2)}`;
-    if (speedBtn) {
+    const hpPct = `${Math.max(0, Math.min(100, (p.hp / p.maxHp) * 100))}%`;
+    if (els.hpFill.style.width !== hpPct) els.hpFill.style.width = hpPct;
+
+    const hpStr = `HP ${Math.ceil(p.hp)} / ${p.maxHp}`;
+    if (els.hpText && els.hpText.textContent !== hpStr) els.hpText.textContent = hpStr;
+
+    const xpPct = `${Math.max(0, Math.min(100, (p.xp / p.xpToNext) * 100))}%`;
+    if (els.xpFill && els.xpFill.style.width !== xpPct) els.xpFill.style.width = xpPct;
+
+    const lvlStr = `${I18n.t('lvl_label')} ${p.level}`;
+    if (els.lvlText && els.lvlText.textContent !== lvlStr) els.lvlText.textContent = lvlStr;
+
+    const waveStr = `${I18n.t('wave_label')} ${this.engine.currentWave}`;
+    if (els.waveNum && els.waveNum.textContent !== waveStr) els.waveNum.textContent = waveStr;
+
+    const timerStr = `${Math.ceil(this.engine.waveTimer)}s`;
+    if (els.waveTimer && els.waveTimer.textContent !== timerStr) els.waveTimer.textContent = timerStr;
+
+    const goldStr = save.gold.toLocaleString();
+    if (els.gold && els.gold.textContent !== goldStr) els.gold.textContent = goldStr;
+
+    const gemsStr = save.gems.toLocaleString();
+    if (els.gems && els.gems.textContent !== gemsStr) els.gems.textContent = gemsStr;
+
+    const revStr = `$${save.totalRevenueSimulated.toFixed(2)}`;
+    if (els.rev && els.rev.textContent !== revStr) els.rev.textContent = revStr;
+
+    if (els.speedBtn) {
       const is2x = this.engine.gameSpeedMultiplier === 2;
-      speedBtn.textContent = `⚡ ${is2x ? I18n.t('speed_2x_on') : I18n.t('speed_1x_btn')}`;
-      speedBtn.classList.toggle('active-speed', is2x);
+      const speedStr = `⚡ ${is2x ? I18n.t('speed_2x_on') : I18n.t('speed_1x_btn')}`;
+      if (els.speedBtn.textContent !== speedStr) {
+        els.speedBtn.textContent = speedStr;
+        els.speedBtn.classList.toggle('active-speed', is2x);
+      }
     }
   }
 
@@ -278,8 +333,7 @@ export class UIManager {
 
     document.getElementById('btn-start-run')?.addEventListener('click', () => {
       AudioManager.getInstance().playClick();
-      this.uiLayer.innerHTML = this.renderTopHud();
-      this.bindTopHudEvents();
+      this.resetToInGameHud();
       this.engine.startNewRun();
     });
 
@@ -464,8 +518,7 @@ export class UIManager {
         if (chosen) {
           AudioManager.getInstance().playClick();
           this.engine.applyTacticalCard(chosen.id);
-          this.uiLayer.innerHTML = this.renderTopHud();
-          this.bindTopHudEvents();
+          this.resetToInGameHud();
           this.engine.state = 'PLAYING';
         }
       });
@@ -478,8 +531,7 @@ export class UIManager {
         for (const c of this.draftedLevelCards) {
           this.engine.applyTacticalCard(c.id);
         }
-        this.uiLayer.innerHTML = this.renderTopHud();
-        this.bindTopHudEvents();
+        this.resetToInGameHud();
         this.engine.state = 'PLAYING';
       }
     });
@@ -720,8 +772,7 @@ export class UIManager {
           `Between Wave ${this.engine.currentWave} & ${this.engine.currentWave + 1}`
         );
       }
-      this.uiLayer.innerHTML = this.renderTopHud();
-      this.bindTopHudEvents();
+      this.resetToInGameHud();
       this.engine.startWave(this.engine.currentWave + 1);
     });
   }
@@ -762,8 +813,7 @@ export class UIManager {
     document.getElementById('btn-revive-ad')?.addEventListener('click', async () => {
       const ok = await MonetizationManager.getInstance().showRewardedAd('Emergency Revive + Tactical Nuke');
       if (ok) {
-        this.uiLayer.innerHTML = this.renderTopHud();
-        this.bindTopHudEvents();
+        this.resetToInGameHud();
         this.engine.revivePlayerWithNuke();
       }
     });
@@ -783,125 +833,132 @@ export class UIManager {
     });
   }
 
-  // PHASE 3A: CYBER SUPPLY CRATE (GACHA) MODAL
-  public openCratesModal(lastLoot?: CrateLootResult): void {
-    document.getElementById('crates-modal')?.remove();
-    const save = SaveManager.getInstance();
+  // Reusable submodal helper to eliminate verbose boilerplate across Crates, Missions, Ranks, and Store
+  private openSubModal(
+    id: string,
+    title: string,
+    sub: string,
+    bodyHtml: string,
+    onBind: (modalEl: HTMLElement, close: () => void) => void
+  ): void {
+    document.getElementById(id)?.remove();
     const prevState = this.engine.state;
     this.engine.setSdkPause(true);
 
     const modalEl = document.createElement('div');
-    modalEl.id = 'crates-modal';
+    modalEl.id = id;
     modalEl.className = 'modal-backdrop';
-    const shards = save.data.techShards;
-
     modalEl.innerHTML = `
       <div class="cyber-panel store-panel">
         <div class="workshop-header">
           <div>
-            <h2>${I18n.t('crates_modal_title')}</h2>
-            <p>${I18n.t('crates_modal_sub')}</p>
+            <h2>${title}</h2>
+            <p>${sub}</p>
           </div>
-          <button id="btn-close-crates" class="btn-secondary">✕ Close</button>
+          <button id="btn-close-${id}" class="btn-secondary">✕ Close</button>
         </div>
-
-        <div class="shards-banner">
-          ${I18n.t('tech_shards_banner', { shards, bonus: shards * 3 })}
-        </div>
-
-        ${
-          lastLoot
-            ? `
-          <div class="crate-loot-reveal pulse-glow">
-            <h4>${I18n.t('crate_rewards_header')}</h4>
-            <div class="loot-pills">
-              <span class="loot-pill">🪙 +${lastLoot.gold} Gold</span>
-              <span class="loot-pill">💎 +${lastLoot.gems} Gems</span>
-              ${lastLoot.techShards > 0 ? `<span class="loot-pill shard-pill">⚙️ +${lastLoot.techShards} Tech Shards (+${lastLoot.techShards * 3}% DMG)</span>` : ''}
-            </div>
-          </div>
-        `
-            : ''
-        }
-
-        <div class="iap-grid">
-          <div class="iap-card">
-            <span class="iap-badge">FREE AD DROP</span>
-            <div class="crate-big-icon">📦</div>
-            <h3>${I18n.t('crate_free_title')}</h3>
-            <p>${I18n.t('crate_free_desc')}</p>
-            <button id="btn-open-ad-crate" class="btn-ad">${I18n.t('crate_free_btn')}</button>
-          </div>
-
-          <div class="iap-card">
-            <div class="crate-big-icon">🎁</div>
-            <h3>${I18n.t('crate_1x_title')}</h3>
-            <p>${I18n.t('crate_1x_desc')}</p>
-            <button id="btn-open-1x-crate" class="btn-primary">${I18n.t('crate_1x_btn')}</button>
-          </div>
-
-          <div class="iap-card">
-            <span class="iap-badge">JACKPOT VALUE</span>
-            <div class="crate-big-icon">🌌</div>
-            <h3>${I18n.t('crate_10x_title')}</h3>
-            <p>${I18n.t('crate_10x_desc')}</p>
-            <button id="btn-open-10x-crate" class="btn-gold">${I18n.t('crate_10x_btn')}</button>
-          </div>
-        </div>
+        ${bodyHtml}
       </div>
     `;
 
     this.uiLayer.appendChild(modalEl);
 
-    const closeCrates = () => {
+    const close = () => {
       modalEl.remove();
       this.engine.setSdkPause(false);
       if (prevState === 'MENU') this.renderMainMenu();
       else if (prevState === 'SHOP') this.renderWorkshopModal();
+      else if (prevState === 'LEVEL_UP') this.renderLevelUpModal();
       else this.updateTopHudValues();
     };
 
-    document.getElementById('btn-close-crates')?.addEventListener('click', closeCrates);
+    document.getElementById(`btn-close-${id}`)?.addEventListener('click', close);
+    onBind(modalEl, close);
+  }
 
-    document.getElementById('btn-open-ad-crate')?.addEventListener('click', async () => {
-      const ok = await MonetizationManager.getInstance().showRewardedAd('Open Free Cyber Supply Crate');
-      if (ok) {
-        const res = save.rollSupplyCrate(1, false);
-        AudioManager.getInstance().playMerge(5);
-        this.openCratesModal(res);
-      }
-    });
+  // PHASE 3A: CYBER SUPPLY CRATE (GACHA) MODAL
+  public openCratesModal(lastLoot?: CrateLootResult): void {
+    const save = SaveManager.getInstance();
+    const shards = save.data.techShards;
 
-    document.getElementById('btn-open-1x-crate')?.addEventListener('click', () => {
-      if (save.spendGems(80)) {
-        const res = save.rollSupplyCrate(1, true);
-        AudioManager.getInstance().playMerge(4);
-        this.openCratesModal(res);
-      } else {
-        modalEl.remove();
-        this.openStoreModal();
+    const contentHtml = `
+      <div class="shards-banner">${I18n.t('tech_shards_banner', { shards, bonus: shards * 3 })}</div>
+      ${
+        lastLoot
+          ? `
+        <div class="crate-loot-reveal pulse-glow">
+          <h4>${I18n.t('crate_rewards_header')}</h4>
+          <div class="loot-pills">
+            <span class="loot-pill">🪙 +${lastLoot.gold} Gold</span>
+            <span class="loot-pill">💎 +${lastLoot.gems} Gems</span>
+            ${lastLoot.techShards > 0 ? `<span class="loot-pill shard-pill">⚙️ +${lastLoot.techShards} Tech Shards (+${lastLoot.techShards * 3}% DMG)</span>` : ''}
+          </div>
+        </div>
+      `
+          : ''
       }
-    });
+      <div class="iap-grid">
+        <div class="iap-card">
+          <span class="iap-badge">FREE AD DROP</span>
+          <div class="crate-big-icon">📦</div>
+          <h3>${I18n.t('crate_free_title')}</h3>
+          <p>${I18n.t('crate_free_desc')}</p>
+          <button id="btn-open-ad-crate" class="btn-ad">${I18n.t('crate_free_btn')}</button>
+        </div>
+        <div class="iap-card">
+          <div class="crate-big-icon">🎁</div>
+          <h3>${I18n.t('crate_1x_title')}</h3>
+          <p>${I18n.t('crate_1x_desc')}</p>
+          <button id="btn-open-1x-crate" class="btn-primary">${I18n.t('crate_1x_btn')}</button>
+        </div>
+        <div class="iap-card">
+          <span class="iap-badge">JACKPOT VALUE</span>
+          <div class="crate-big-icon">🌌</div>
+          <h3>${I18n.t('crate_10x_title')}</h3>
+          <p>${I18n.t('crate_10x_desc')}</p>
+          <button id="btn-open-10x-crate" class="btn-gold">${I18n.t('crate_10x_btn')}</button>
+        </div>
+      </div>
+    `;
 
-    document.getElementById('btn-open-10x-crate')?.addEventListener('click', () => {
-      if (save.spendGems(700)) {
-        const res = save.rollSupplyCrate(10, true);
-        AudioManager.getInstance().playMerge(5);
-        this.openCratesModal(res);
-      } else {
-        modalEl.remove();
-        this.openStoreModal();
-      }
+    this.openSubModal('crates-modal', I18n.t('crates_modal_title'), I18n.t('crates_modal_sub'), contentHtml, (_el, close) => {
+      document.getElementById('btn-open-ad-crate')?.addEventListener('click', async () => {
+        const ok = await MonetizationManager.getInstance().showRewardedAd('Open Free Cyber Supply Crate');
+        if (ok) {
+          const res = save.rollSupplyCrate(1, false);
+          AudioManager.getInstance().playMerge(5);
+          this.openCratesModal(res);
+        }
+      });
+
+      document.getElementById('btn-open-1x-crate')?.addEventListener('click', () => {
+        if (save.spendGems(80)) {
+          const res = save.rollSupplyCrate(1, true);
+          AudioManager.getInstance().playMerge(4);
+          this.openCratesModal(res);
+        } else {
+          close();
+          this.openStoreModal();
+        }
+      });
+
+      document.getElementById('btn-open-10x-crate')?.addEventListener('click', () => {
+        if (save.spendGems(700)) {
+          const res = save.rollSupplyCrate(10, true);
+          AudioManager.getInstance().playMerge(5);
+          this.openCratesModal(res);
+        } else {
+          close();
+          this.openStoreModal();
+        }
+      });
     });
   }
 
   // PHASE 3A: DAILY MISSIONS & ACHIEVEMENTS MODAL
   public openMissionsModal(): void {
-    document.getElementById('missions-modal')?.remove();
     const save = SaveManager.getInstance();
     const d = save.data;
-    const prevState = this.engine.state;
-    this.engine.setSdkPause(true);
 
     const missions: Array<{
       tierKey: keyof MissionTiers;
@@ -950,95 +1007,69 @@ export class UIManager {
       }
     ];
 
-    const modalEl = document.createElement('div');
-    modalEl.id = 'missions-modal';
-    modalEl.className = 'modal-backdrop';
-    modalEl.innerHTML = `
-      <div class="cyber-panel store-panel">
-        <div class="workshop-header">
-          <div>
-            <h2>${I18n.t('missions_modal_title')}</h2>
-            <p>${I18n.t('missions_modal_sub')}</p>
-          </div>
-          <button id="btn-close-missions" class="btn-secondary">✕ Close</button>
-        </div>
-
-        <div class="missions-list">
-          ${missions
-            .map((m, idx) => {
-              const pct = Math.min(100, Math.round((m.current / m.target) * 100));
-              const ready = m.current >= m.target;
-              return `
-                <div class="mission-row ${ready ? 'mission-ready' : ''}">
-                  <div class="mission-details">
-                    <h4>${m.title} <span class="lvl-tag">Tier ${d.missionTiers[m.tierKey]}</span></h4>
-                    <p>${m.desc} (${Math.min(m.current, m.target)} / ${m.target})</p>
-                    <div class="mission-prog-wrap">
-                      <div class="mission-prog-fill" style="width: ${pct}%"></div>
-                    </div>
-                  </div>
-                  <div class="mission-rewards">
-                    <span class="reward-tag">🪙 ${m.rewardGold} + 💎 ${m.rewardGems}</span>
-                    ${
-                      ready
-                        ? `
-                      <div class="mission-claim-btns">
-                        <button data-claim-idx="${idx}" data-claim-mult="1" class="btn-primary">${I18n.t('btn_claim_mission')}</button>
-                        <button data-claim-idx="${idx}" data-claim-mult="2" class="btn-ad">${I18n.t('btn_claim_2x_ad')}</button>
-                      </div>
-                    `
-                        : `<button class="btn-secondary" disabled>${I18n.t('mission_in_progress')}</button>`
-                    }
+    const contentHtml = `
+      <div class="missions-list">
+        ${missions
+          .map((m, idx) => {
+            const pct = Math.min(100, Math.round((m.current / m.target) * 100));
+            const ready = m.current >= m.target;
+            return `
+              <div class="mission-row ${ready ? 'mission-ready' : ''}">
+                <div class="mission-details">
+                  <h4>${m.title} <span class="lvl-tag">Tier ${d.missionTiers[m.tierKey]}</span></h4>
+                  <p>${m.desc} (${Math.min(m.current, m.target)} / ${m.target})</p>
+                  <div class="mission-prog-wrap">
+                    <div class="mission-prog-fill" style="width: ${pct}%"></div>
                   </div>
                 </div>
-              `;
-            })
-            .join('')}
-        </div>
+                <div class="mission-rewards">
+                  <span class="reward-tag">🪙 ${m.rewardGold} + 💎 ${m.rewardGems}</span>
+                  ${
+                    ready
+                      ? `
+                    <div class="mission-claim-btns">
+                      <button data-claim-idx="${idx}" data-claim-mult="1" class="btn-primary">${I18n.t('btn_claim_mission')}</button>
+                      <button data-claim-idx="${idx}" data-claim-mult="2" class="btn-ad">${I18n.t('btn_claim_2x_ad')}</button>
+                    </div>
+                  `
+                      : `<button class="btn-secondary" disabled>${I18n.t('mission_in_progress')}</button>`
+                  }
+                </div>
+              </div>
+            `;
+          })
+          .join('')}
       </div>
     `;
 
-    this.uiLayer.appendChild(modalEl);
+    this.openSubModal('missions-modal', I18n.t('missions_modal_title'), I18n.t('missions_modal_sub'), contentHtml, (modalEl) => {
+      modalEl.querySelectorAll('[data-claim-idx]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const idx = Number((btn as HTMLElement).dataset.claimIdx);
+          const mult = Number((btn as HTMLElement).dataset.claimMult);
+          const m = missions[idx];
+          if (!m || m.current < m.target) return;
 
-    const closeMissions = () => {
-      modalEl.remove();
-      this.engine.setSdkPause(false);
-      if (prevState === 'MENU') this.renderMainMenu();
-      else if (prevState === 'SHOP') this.renderWorkshopModal();
-      else this.updateTopHudValues();
-    };
+          if (mult === 2) {
+            const ok = await MonetizationManager.getInstance().showRewardedAd(`2x Mission Bounty: ${m.title}`);
+            if (!ok) return;
+          }
 
-    document.getElementById('btn-close-missions')?.addEventListener('click', closeMissions);
-
-    modalEl.querySelectorAll('[data-claim-idx]').forEach((btn) => {
-      btn.addEventListener('click', async () => {
-        const idx = Number((btn as HTMLElement).dataset.claimIdx);
-        const mult = Number((btn as HTMLElement).dataset.claimMult);
-        const m = missions[idx];
-        if (!m || m.current < m.target) return;
-
-        if (mult === 2) {
-          const ok = await MonetizationManager.getInstance().showRewardedAd(`2x Mission Bounty: ${m.title}`);
-          if (!ok) return;
-        }
-
-        save.addGold(m.rewardGold * mult);
-        save.addGems(m.rewardGems * mult);
-        save.data.missionTiers[m.tierKey] += 1;
-        save.save();
-        AudioManager.getInstance().playCashRegister();
-        this.openMissionsModal();
+          save.addGold(m.rewardGold * mult);
+          save.addGems(m.rewardGems * mult);
+          save.data.missionTiers[m.tierKey] += 1;
+          save.save();
+          AudioManager.getInstance().playCashRegister();
+          this.openMissionsModal();
+        });
       });
     });
   }
 
   // PHASE 3B: GLOBAL ARENA LEADERBOARD MODAL
   public openLeaderboardModal(): void {
-    document.getElementById('leaderboard-modal')?.remove();
     const save = SaveManager.getInstance();
     const d = save.data;
-    const prevState = this.engine.state;
-    this.engine.setSdkPause(true);
 
     const allEntries: LeaderboardEntry[] = [
       ...GLOBAL_RIVALS,
@@ -1051,176 +1082,132 @@ export class UIManager {
       }
     ].sort((a, b) => b.score - a.score || b.wave - a.wave);
 
-    const modalEl = document.createElement('div');
-    modalEl.id = 'leaderboard-modal';
-    modalEl.className = 'modal-backdrop';
-    modalEl.innerHTML = `
-      <div class="cyber-panel store-panel">
-        <div class="workshop-header">
-          <div>
-            <h2>${I18n.t('leaderboard_title')}</h2>
-            <p>${I18n.t('leaderboard_sub')}</p>
-          </div>
-          <button id="btn-close-ranks" class="btn-secondary">✕ Close</button>
-        </div>
+    const contentHtml = `
+      <div class="callsign-bar">
+        <label for="input-callsign">${I18n.t('callsign_label')}</label>
+        <input id="input-callsign" type="text" maxlength="18" value="${d.playerName}" />
+        <button id="btn-save-callsign" class="btn-primary">${I18n.t('btn_save_callsign')}</button>
+      </div>
 
-        <div class="callsign-bar">
-          <label for="input-callsign">${I18n.t('callsign_label')}</label>
-          <input id="input-callsign" type="text" maxlength="18" value="${d.playerName}" />
-          <button id="btn-save-callsign" class="btn-primary">${I18n.t('btn_save_callsign')}</button>
-        </div>
-
-        <div class="leaderboard-table-wrap">
-          <table class="leaderboard-table">
-            <thead>
-              <tr>
-                <th>${I18n.t('col_rank')}</th>
-                <th>${I18n.t('col_commander')}</th>
-                <th>${I18n.t('col_wave')}</th>
-                <th>${I18n.t('col_score')}</th>
+      <div class="leaderboard-table-wrap">
+        <table class="leaderboard-table">
+          <thead>
+            <tr>
+              <th>${I18n.t('col_rank')}</th>
+              <th>${I18n.t('col_commander')}</th>
+              <th>${I18n.t('col_wave')}</th>
+              <th>${I18n.t('col_score')}</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${allEntries
+              .map(
+                (entry, i) => `
+              <tr class="${entry.isPlayer ? 'player-rank-row' : ''}">
+                <td><strong>#${i + 1}</strong></td>
+                <td>
+                  ${entry.name}
+                  ${entry.vip ? `<span class="vip-tag">VIP</span>` : ''}
+                  ${entry.isPlayer ? `<span class="you-tag">YOU</span>` : ''}
+                </td>
+                <td>${I18n.t('wave_label')} ${entry.wave}</td>
+                <td><strong>${entry.score.toLocaleString()}</strong></td>
               </tr>
-            </thead>
-            <tbody>
-              ${allEntries
-                .map(
-                  (entry, i) => `
-                <tr class="${entry.isPlayer ? 'player-rank-row' : ''}">
-                  <td><strong>#${i + 1}</strong></td>
-                  <td>
-                    ${entry.name}
-                    ${entry.vip ? `<span class="vip-tag">VIP</span>` : ''}
-                    ${entry.isPlayer ? `<span class="you-tag">YOU</span>` : ''}
-                  </td>
-                  <td>${I18n.t('wave_label')} ${entry.wave}</td>
-                  <td><strong>${entry.score.toLocaleString()}</strong></td>
-                </tr>
-              `
-                )
-                .join('')}
-            </tbody>
-          </table>
-        </div>
+            `
+              )
+              .join('')}
+          </tbody>
+        </table>
       </div>
     `;
 
-    this.uiLayer.appendChild(modalEl);
-
-    const closeRanks = () => {
-      modalEl.remove();
-      this.engine.setSdkPause(false);
-      if (prevState === 'MENU') this.renderMainMenu();
-      else if (prevState === 'SHOP') this.renderWorkshopModal();
-      else this.updateTopHudValues();
-    };
-
-    document.getElementById('btn-close-ranks')?.addEventListener('click', closeRanks);
-
-    document.getElementById('btn-save-callsign')?.addEventListener('click', () => {
-      const input = document.getElementById('input-callsign') as HTMLInputElement | null;
-      const cleaned = (input?.value || '').trim().toUpperCase().slice(0, 18);
-      if (cleaned) {
-        save.data.playerName = cleaned;
-        save.save();
-        AudioManager.getInstance().playClick();
-        this.openLeaderboardModal();
-      }
+    this.openSubModal('leaderboard-modal', I18n.t('leaderboard_title'), I18n.t('leaderboard_sub'), contentHtml, () => {
+      document.getElementById('btn-save-callsign')?.addEventListener('click', () => {
+        const input = document.getElementById('input-callsign') as HTMLInputElement | null;
+        const cleaned = (input?.value || '').trim().toUpperCase().slice(0, 18);
+        if (cleaned) {
+          save.data.playerName = cleaned;
+          save.save();
+          AudioManager.getInstance().playClick();
+          this.openLeaderboardModal();
+        }
+      });
     });
   }
 
   public openStoreModal(): void {
-    document.getElementById('vip-store-modal')?.remove();
     const save = SaveManager.getInstance();
-    const prevState = this.engine.state;
-    this.engine.setSdkPause(true);
 
-    const modalEl = document.createElement('div');
-    modalEl.id = 'vip-store-modal';
-    modalEl.className = 'modal-backdrop';
-    modalEl.innerHTML = `
-      <div class="cyber-panel store-panel">
-        <div class="workshop-header">
-          <div>
-            <h2>💎 NEXUS CYBER STORE & IAP SANDBOX</h2>
-            <p>Test high-converting In-App Purchases (Stripe/Portal SDK) and Gem Crates. All transactions increment your Simulated Revenue counter!</p>
-          </div>
-          <button id="btn-close-store" class="btn-secondary">✕ Close</button>
+    const contentHtml = `
+      <div class="iap-grid">
+        ${IAP_CATALOG.map((item) => {
+          const isOwned =
+            (item.id === 'vip_speed' && save.data.vipUnlocked) ||
+            (item.id === 'starter_pack' && save.data.starterPackBought);
+
+          return `
+            <div class="iap-card">
+              ${item.badge ? `<span class="iap-badge">${item.badge}</span>` : ''}
+              <h3>${item.title}</h3>
+              <p>${item.description}</p>
+              <button data-iap-id="${item.id}" class="btn-gold ${isOwned ? 'disabled' : ''}" ${isOwned ? 'disabled' : ''}>
+                ${isOwned ? 'UNLOCKED ✓' : `BUY $${item.priceUsd.toFixed(2)}`}
+              </button>
+            </div>
+          `;
+        }).join('')}
+      </div>
+
+      <div class="gem-exchange-bar">
+        <div>
+          <h4>🎁 LEGENDARY GEM EXCHANGE</h4>
+          <p>Spend 50 💎 Gems to receive +1,000 Gold instantly</p>
         </div>
-
-        <div class="iap-grid">
-          ${IAP_CATALOG.map((item) => {
-            const isOwned =
-              (item.id === 'vip_speed' && save.data.vipUnlocked) ||
-              (item.id === 'starter_pack' && save.data.starterPackBought);
-
-            return `
-              <div class="iap-card">
-                ${item.badge ? `<span class="iap-badge">${item.badge}</span>` : ''}
-                <h3>${item.title}</h3>
-                <p>${item.description}</p>
-                <button data-iap-id="${item.id}" class="btn-gold ${isOwned ? 'disabled' : ''}" ${isOwned ? 'disabled' : ''}>
-                  ${isOwned ? 'UNLOCKED ✓' : `BUY $${item.priceUsd.toFixed(2)}`}
-                </button>
-              </div>
-            `;
-          }).join('')}
-        </div>
-
-        <div class="gem-exchange-bar">
-          <div>
-            <h4>🎁 LEGENDARY GEM EXCHANGE</h4>
-            <p>Spend 50 💎 Gems to receive +1,000 Gold instantly</p>
-          </div>
-          <button id="btn-spend-gems" class="btn-primary">Spend 50 💎 → +1,000 🪙</button>
-        </div>
+        <button id="btn-spend-gems" class="btn-primary">Spend 50 💎 → +1,000 🪙</button>
       </div>
     `;
 
-    this.uiLayer.appendChild(modalEl);
+    this.openSubModal(
+      'vip-store-modal',
+      '💎 NEXUS CYBER STORE & IAP SANDBOX',
+      'Test high-converting In-App Purchases (Stripe/Portal SDK) and Gem Crates. All transactions increment your Simulated Revenue counter!',
+      contentHtml,
+      (modalEl, close) => {
+        modalEl.querySelectorAll('[data-iap-id]').forEach((btn) => {
+          btn.addEventListener('click', async () => {
+            const id = (btn as HTMLElement).dataset.iapId!;
+            const ok = await MonetizationManager.getInstance().purchaseProduct(id);
+            if (ok) {
+              if (id === 'starter_pack') {
+                save.data.starterPackBought = true;
+                save.addGold(1500);
+                save.addGems(100);
+                this.engine.weapons.addWeaponToAvailableSlot(this.engine.weapons.createWeapon('plasma', 3));
+              } else if (id === 'vip_speed') {
+                save.data.vipUnlocked = true;
+                save.unlockCommander('void_phantom');
+                save.addGems(500);
+                this.engine.gameSpeedMultiplier = 2;
+              } else if (id === 'gem_vault_small') {
+                save.addGems(150);
+              } else if (id === 'gem_vault_mega') {
+                save.addGems(1000);
+                save.addGold(5000);
+              }
+              save.save();
+              close();
+            }
+          });
+        });
 
-    const closeStore = () => {
-      modalEl.remove();
-      this.engine.setSdkPause(false);
-      if (prevState === 'MENU') this.renderMainMenu();
-      else if (prevState === 'SHOP') this.renderWorkshopModal();
-      else if (prevState === 'LEVEL_UP') this.renderLevelUpModal();
-      else this.updateTopHudValues();
-    };
-
-    document.getElementById('btn-close-store')?.addEventListener('click', closeStore);
-
-    modalEl.querySelectorAll('[data-iap-id]').forEach((btn) => {
-      btn.addEventListener('click', async () => {
-        const id = (btn as HTMLElement).dataset.iapId!;
-        const ok = await MonetizationManager.getInstance().purchaseProduct(id);
-        if (ok) {
-          if (id === 'starter_pack') {
-            save.data.starterPackBought = true;
-            save.addGold(1500);
-            save.addGems(100);
-            this.engine.weapons.addWeaponToAvailableSlot(this.engine.weapons.createWeapon('plasma', 3));
-          } else if (id === 'vip_speed') {
-            save.data.vipUnlocked = true;
-            save.unlockCommander('void_phantom');
-            save.addGems(500);
-            this.engine.gameSpeedMultiplier = 2;
-          } else if (id === 'gem_vault_small') {
-            save.addGems(150);
-          } else if (id === 'gem_vault_mega') {
-            save.addGems(1000);
-            save.addGold(5000);
+        document.getElementById('btn-spend-gems')?.addEventListener('click', () => {
+          if (save.spendGems(50)) {
+            save.addGold(1000);
+            AudioManager.getInstance().playCashRegister();
+            this.updateTopHudValues();
           }
-          save.save();
-          closeStore();
-        }
-      });
-    });
-
-    document.getElementById('btn-spend-gems')?.addEventListener('click', () => {
-      if (save.spendGems(50)) {
-        save.addGold(1000);
-        AudioManager.getInstance().playCashRegister();
-        this.updateTopHudValues();
+        });
       }
-    });
+    );
   }
 }

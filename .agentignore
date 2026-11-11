@@ -1,0 +1,8 @@
+# AI Agent Token Optimization Ignore File
+# Prevents LLM context blowup from generated/binary/vendor files
+node_modules/
+dist/
+package-lock.json
+*.zip
+.git/
+.vscode/

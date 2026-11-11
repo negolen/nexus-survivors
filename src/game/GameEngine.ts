@@ -217,11 +217,15 @@ export class GameEngine {
   private screenShake = 0;
   private isPausedBySdk = false;
 
-  // Input State
+  // Input State (WASD + Floating Dynamic Virtual Joystick)
   private keys: Set<string> = new Set();
-  private pointerActive = false;
-  private pointerScreenX = 0;
-  private pointerScreenY = 0;
+  private joyActive = false;
+  private joyOriginX = 0;
+  private joyOriginY = 0;
+  private joyCurrentX = 0;
+  private joyCurrentY = 0;
+  private readonly JOY_DEADZONE = 8;
+  private readonly JOY_MAX_RADIUS = 52;
 
   // Callbacks to UI
   public onHudUpdate?: () => void;
@@ -263,19 +267,32 @@ export class GameEngine {
     });
 
     this.canvas.addEventListener('pointerdown', (e) => {
-      this.pointerActive = true;
-      this.pointerScreenX = e.clientX;
-      this.pointerScreenY = e.clientY;
+      this.joyActive = true;
+      this.joyOriginX = e.clientX;
+      this.joyOriginY = e.clientY;
+      this.joyCurrentX = e.clientX;
+      this.joyCurrentY = e.clientY;
     });
     window.addEventListener('pointermove', (e) => {
-      if (this.pointerActive) {
-        this.pointerScreenX = e.clientX;
-        this.pointerScreenY = e.clientY;
+      if (this.joyActive) {
+        this.joyCurrentX = e.clientX;
+        this.joyCurrentY = e.clientY;
+        const pdx = this.joyCurrentX - this.joyOriginX;
+        const pdy = this.joyCurrentY - this.joyOriginY;
+        const dist = Math.hypot(pdx, pdy);
+        const maxFollowDist = this.JOY_MAX_RADIUS * 1.45;
+        if (dist > maxFollowDist) {
+          const excess = dist - maxFollowDist;
+          this.joyOriginX += (pdx / dist) * excess;
+          this.joyOriginY += (pdy / dist) * excess;
+        }
       }
     });
-    window.addEventListener('pointerup', () => {
-      this.pointerActive = false;
-    });
+    const endPointer = () => {
+      this.joyActive = false;
+    };
+    window.addEventListener('pointerup', endPointer);
+    window.addEventListener('pointercancel', endPointer);
   }
 
   public setSdkPause(paused: boolean): void {
@@ -399,15 +416,16 @@ export class GameEngine {
     this.screenShake = 18;
     AudioManager.getInstance().playExplosion();
 
-    for (let i = this.enemies.length - 1; i >= 0; i--) {
+    let writeIdx = 0;
+    for (let i = 0; i < this.enemies.length; i++) {
       const e = this.enemies[i];
       this.spawnParticles(e.x, e.y, e.color, 14);
       if (e.type === 'boss') {
         e.hp = Math.max(1, e.hp * 0.5);
-      } else {
-        this.enemies.splice(i, 1);
+        this.enemies[writeIdx++] = e;
       }
     }
+    this.enemies.length = writeIdx;
 
     this.state = 'PLAYING';
     this.onHudUpdate?.();
@@ -445,13 +463,11 @@ export class GameEngine {
     if (this.keys.has('KeyA') || this.keys.has('ArrowLeft')) dx -= 1;
     if (this.keys.has('KeyD') || this.keys.has('ArrowRight')) dx += 1;
 
-    if (dx === 0 && dy === 0 && this.pointerActive) {
-      const centerX = this.canvas.width / 2;
-      const centerY = this.canvas.height / 2;
-      const pdx = this.pointerScreenX - centerX;
-      const pdy = this.pointerScreenY - centerY;
+    if (dx === 0 && dy === 0 && this.joyActive) {
+      const pdx = this.joyCurrentX - this.joyOriginX;
+      const pdy = this.joyCurrentY - this.joyOriginY;
       const dist = Math.hypot(pdx, pdy);
-      if (dist > 14) {
+      if (dist > this.JOY_DEADZONE) {
         dx = pdx / dist;
         dy = pdy / dist;
       }
@@ -509,8 +525,9 @@ export class GameEngine {
       }
     }
 
-    // 5. Update Projectiles
-    for (let i = this.projectiles.length - 1; i >= 0; i--) {
+    // 5. Update Projectiles (in-place compaction - zero GC allocations)
+    let projWrite = 0;
+    for (let i = 0; i < this.projectiles.length; i++) {
       const p = this.projectiles[i];
       p.x += p.vx * dt;
       p.y += p.vy * dt;
@@ -519,38 +536,40 @@ export class GameEngine {
         p.rotation += dt * 16;
       }
 
-      let removed = false;
-      for (let j = this.enemies.length - 1; j >= 0; j--) {
-        const e = this.enemies[j];
-        if (p.hitEnemyIds.has(e.id)) continue;
+      let alive = p.life > 0;
+      if (alive) {
+        for (let j = this.enemies.length - 1; j >= 0; j--) {
+          const e = this.enemies[j];
+          if (p.hitEnemyIds.has(e.id)) continue;
 
-        const dist = Math.hypot(p.x - e.x, p.y - e.y);
-        if (dist <= p.radius + e.radius) {
-          p.hitEnemyIds.add(e.id);
+          const dist = Math.hypot(p.x - e.x, p.y - e.y);
+          if (dist <= p.radius + e.radius) {
+            p.hitEnemyIds.add(e.id);
 
-          if (p.splashRadius > 0) {
-            this.triggerExplosionSplash(p.x, p.y, p.splashRadius, p.damage, p.color);
-          } else {
-            this.damageEnemy(e, p.damage, p.color);
-          }
+            if (p.splashRadius > 0) {
+              this.triggerExplosionSplash(p.x, p.y, p.splashRadius, p.damage, p.color);
+            } else {
+              this.damageEnemy(e, p.damage, p.color);
+            }
 
-          if (p.pierce > 0) {
-            p.pierce -= 1;
-          } else {
-            this.projectiles.splice(i, 1);
-            removed = true;
-            break;
+            if (p.pierce > 0) {
+              p.pierce -= 1;
+            } else {
+              alive = false;
+              break;
+            }
           }
         }
       }
 
-      if (!removed && p.life <= 0) {
-        this.projectiles.splice(i, 1);
+      if (alive) {
+        this.projectiles[projWrite++] = p;
       }
     }
+    this.projectiles.length = projWrite;
 
     // 6. Update Enemies
-    for (let i = this.enemies.length - 1; i >= 0; i--) {
+    for (let i = 0; i < this.enemies.length; i++) {
       const e = this.enemies[i];
       if (e.hitFlash > 0) e.hitFlash -= dt;
       if (e.slowTimer > 0) e.slowTimer -= dt;
@@ -578,11 +597,12 @@ export class GameEngine {
       }
     }
 
-    // 7. Update Loot Drops (Magnetic pickup + XP gain)
+    // 7. Update Loot Drops (Magnetic pickup + XP gain - in-place compaction)
     const magnetRadius = save.getMagnetRadius() * (1 + this.runBuffs.magnetMult);
     let leveledUp = false;
+    let lootWrite = 0;
 
-    for (let i = this.lootDrops.length - 1; i >= 0; i--) {
+    for (let i = 0; i < this.lootDrops.length; i++) {
       const drop = this.lootDrops[i];
       const dist = Math.hypot(this.player.x - drop.x, this.player.y - drop.y);
 
@@ -593,7 +613,9 @@ export class GameEngine {
         drop.y += Math.sin(angle) * pullSpeed * dt;
       }
 
+      let collected = false;
       if (dist < this.player.radius + drop.radius + 8) {
+        collected = true;
         if (drop.type === 'gold') {
           const goldAmt = Math.max(1, Math.round(drop.value * (1 + this.runBuffs.goldMult)));
           save.addGold(goldAmt);
@@ -620,37 +642,58 @@ export class GameEngine {
         }
 
         AudioManager.getInstance().playCoin();
-        this.lootDrops.splice(i, 1);
+      }
+
+      if (!collected) {
+        this.lootDrops[lootWrite++] = drop;
       }
     }
+    this.lootDrops.length = lootWrite;
 
-    // 8. Visual FX Updates
-    for (let i = this.lightningBolts.length - 1; i >= 0; i--) {
-      this.lightningBolts[i].alpha -= dt * 4.5;
-      if (this.lightningBolts[i].alpha <= 0) this.lightningBolts.splice(i, 1);
+    // 8. Visual FX Updates (in-place compaction - zero GC pause)
+    let boltWrite = 0;
+    for (let i = 0; i < this.lightningBolts.length; i++) {
+      const b = this.lightningBolts[i];
+      b.alpha -= dt * 4.5;
+      if (b.alpha > 0) {
+        this.lightningBolts[boltWrite++] = b;
+      }
     }
+    this.lightningBolts.length = boltWrite;
 
-    for (let i = this.frostRings.length - 1; i >= 0; i--) {
+    let ringWrite = 0;
+    for (let i = 0; i < this.frostRings.length; i++) {
       const ring = this.frostRings[i];
       ring.currentRadius += (ring.maxRadius - ring.currentRadius) * dt * 10;
       ring.alpha -= dt * 2.5;
-      if (ring.alpha <= 0) this.frostRings.splice(i, 1);
+      if (ring.alpha > 0) {
+        this.frostRings[ringWrite++] = ring;
+      }
     }
+    this.frostRings.length = ringWrite;
 
-    for (let i = this.particles.length - 1; i >= 0; i--) {
+    let partWrite = 0;
+    for (let i = 0; i < this.particles.length; i++) {
       const pt = this.particles[i];
       pt.x += pt.vx * dt;
       pt.y += pt.vy * dt;
       pt.alpha -= pt.decay * dt;
-      if (pt.alpha <= 0) this.particles.splice(i, 1);
+      if (pt.alpha > 0) {
+        this.particles[partWrite++] = pt;
+      }
     }
+    this.particles.length = partWrite;
 
-    for (let i = this.floatingTexts.length - 1; i >= 0; i--) {
+    let textWrite = 0;
+    for (let i = 0; i < this.floatingTexts.length; i++) {
       const ft = this.floatingTexts[i];
       ft.y += ft.vy * dt;
       ft.alpha -= dt * 1.4;
-      if (ft.alpha <= 0) this.floatingTexts.splice(i, 1);
+      if (ft.alpha > 0) {
+        this.floatingTexts[textWrite++] = ft;
+      }
     }
+    this.floatingTexts.length = textWrite;
 
     this.onHudUpdate?.();
 
@@ -827,8 +870,14 @@ export class GameEngine {
     );
 
     if (e.hp <= 0) {
+      // Swap-and-pop: O(1) removal without reallocating/shifting array
       const idx = this.enemies.indexOf(e);
-      if (idx !== -1) this.enemies.splice(idx, 1);
+      if (idx !== -1) {
+        const last = this.enemies.pop();
+        if (idx < this.enemies.length && last) {
+          this.enemies[idx] = last;
+        }
+      }
 
       this.runKills += 1;
       SaveManager.getInstance().recordKill(1);
@@ -1163,6 +1212,49 @@ export class GameEngine {
       ctx.restore();
     }
 
+    ctx.restore();
+
+    if (this.joyActive && this.state === 'PLAYING') {
+      this.drawVirtualJoystick(ctx);
+    }
+  }
+
+  private drawVirtualJoystick(ctx: CanvasRenderingContext2D): void {
+    const pdx = this.joyCurrentX - this.joyOriginX;
+    const pdy = this.joyCurrentY - this.joyOriginY;
+    const dist = Math.hypot(pdx, pdy);
+    const clampedDist = Math.min(dist, this.JOY_MAX_RADIUS);
+    const angle = Math.atan2(pdy, pdx);
+    const knobX = this.joyOriginX + (dist > 0 ? Math.cos(angle) * clampedDist : 0);
+    const knobY = this.joyOriginY + (dist > 0 ? Math.sin(angle) * clampedDist : 0);
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(this.joyOriginX, this.joyOriginY, this.JOY_MAX_RADIUS, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(56, 189, 248, 0.12)';
+    ctx.fill();
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.55)';
+    ctx.stroke();
+
+    if (dist > this.JOY_DEADZONE) {
+      ctx.beginPath();
+      ctx.moveTo(this.joyOriginX, this.joyOriginY);
+      ctx.lineTo(knobX, knobY);
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.35)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+
+    ctx.beginPath();
+    ctx.arc(knobX, knobY, 20, 0, Math.PI * 2);
+    ctx.fillStyle = '#38bdf8';
+    ctx.shadowColor = '#38bdf8';
+    ctx.shadowBlur = 12;
+    ctx.fill();
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = '#ffffff';
+    ctx.stroke();
     ctx.restore();
   }
 
