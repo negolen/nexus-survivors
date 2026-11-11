@@ -286,12 +286,19 @@ export class UIManager {
   public renderMainMenu(): void {
     const save = SaveManager.getInstance();
     const d = save.data;
+    const isTr = d.language === 'tr';
 
     this.uiLayer.innerHTML = `
       ${this.renderTopHud()}
       <div class="modal-backdrop">
         <div class="cyber-panel main-menu-panel">
-          <div class="hero-badge">${I18n.t('hero_badge')}</div>
+          <div class="menu-top-row">
+            <div class="hero-badge">${I18n.t('hero_badge')}</div>
+            <div class="lang-switch-group" role="group" aria-label="Language Selector">
+              <button id="btn-menu-lang-en" class="btn-lang-pill ${!isTr ? 'active-lang' : ''}">🇬🇧 ENGLISH (EN)</button>
+              <button id="btn-menu-lang-tr" class="btn-lang-pill ${isTr ? 'active-lang' : ''}">🇹🇷 TÜRKÇE (TR)</button>
+            </div>
+          </div>
           <h1 class="game-title">NEXUS SURVIVORS<span>${I18n.t('game_subtitle')}</span></h1>
           <p class="hero-subtitle">${I18n.t('hero_desc')}</p>
 
@@ -330,6 +337,18 @@ export class UIManager {
     `;
 
     this.bindTopHudEvents();
+
+    document.getElementById('btn-menu-lang-en')?.addEventListener('click', () => {
+      AudioManager.getInstance().playClick();
+      save.setLanguage('en');
+      this.renderMainMenu();
+    });
+
+    document.getElementById('btn-menu-lang-tr')?.addEventListener('click', () => {
+      AudioManager.getInstance().playClick();
+      save.setLanguage('tr');
+      this.renderMainMenu();
+    });
 
     document.getElementById('btn-start-run')?.addEventListener('click', () => {
       AudioManager.getInstance().playClick();

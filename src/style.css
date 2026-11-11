@@ -39,6 +39,7 @@ button, .hp-bar-label, .wave-pill strong, .currency-pill strong,
   font-family: 'Orbitron', sans-serif;
 }
 
+#webgl-canvas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; }
 #game-canvas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1; }
 #ui-layer, #sdk-overlay { position: absolute; inset: 0; pointer-events: none; }
 #ui-layer { z-index: 10; }
@@ -142,6 +143,38 @@ button, .hp-bar-label, .wave-pill strong, .currency-pill strong,
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8), 0 0 30px rgba(56, 189, 248, 0.12);
 }
 
+.menu-top-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.lang-switch-group {
+  display: flex;
+  gap: 6px;
+  background: rgba(2, 6, 23, 0.8);
+  padding: 4px;
+  border-radius: 10px;
+  border: 1px solid var(--border-cyan);
+}
+
+.btn-lang-pill {
+  padding: 6px 12px;
+  font-size: 0.74rem;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.btn-lang-pill.active-lang {
+  background: linear-gradient(135deg, #0284c7, #2563eb);
+  color: #ffffff;
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.45);
+}
+
 .hero-badge {
   display: inline-block;
   padding: 4px 12px;
@@ -152,7 +185,6 @@ button, .hp-bar-label, .wave-pill strong, .currency-pill strong,
   background: rgba(56, 189, 248, 0.15);
   color: var(--neon-blue);
   border: 1px solid var(--border-cyan);
-  margin-bottom: 10px;
 }
 
 .game-title {

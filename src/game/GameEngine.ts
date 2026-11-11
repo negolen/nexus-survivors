@@ -1,5 +1,7 @@
 import { AudioManager } from '../core/AudioManager';
+import { I18n } from '../core/I18n';
 import { SaveManager } from '../core/SaveManager';
+import { Renderer3D } from './Renderer3D';
 import {
   TIER_COLORS,
   WEAPON_BLUEPRINTS,
@@ -160,6 +162,7 @@ export type GameState = 'MENU' | 'PLAYING' | 'LEVEL_UP' | 'SHOP' | 'REVIVE_PROMP
 export class GameEngine {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
+  private renderer3d: Renderer3D;
   public weapons: WeaponSystem;
   public state: GameState = 'MENU';
 
@@ -241,6 +244,7 @@ export class GameEngine {
     if (!context) throw new Error('Canvas 2D context not supported');
     this.ctx = context;
     this.weapons = new WeaponSystem();
+    this.renderer3d = new Renderer3D(canvas, this.worldSize);
 
     this.handleResize();
     window.addEventListener('resize', () => this.handleResize());
@@ -251,6 +255,7 @@ export class GameEngine {
   private handleResize(): void {
     this.canvas.width = window.innerWidth;
     this.canvas.height = window.innerHeight;
+    this.renderer3d?.resize(window.innerWidth, window.innerHeight);
   }
 
   private bindInputs(): void {
@@ -380,7 +385,8 @@ export class GameEngine {
   public startWave(waveNum: number): void {
     const save = SaveManager.getInstance();
     this.currentWave = waveNum;
-    this.waveDuration = Math.min(45, 22 + waveNum * 2);
+    const isBossWave = waveNum % 5 === 0;
+    this.waveDuration = isBossWave ? 45 : Math.min(40, 22 + waveNum * 2);
     this.waveTimer = this.waveDuration;
     this.waveGoldEarned = 0;
 
@@ -401,8 +407,12 @@ export class GameEngine {
       this.gameSpeedMultiplier = 1;
     }
 
-    if (waveNum % 5 === 0) {
+    // Every 5th wave: Spawn the Colossal Dreadnought Boss + initial normal wave pack!
+    if (isBossWave) {
       this.spawnEnemy('boss');
+      for (let i = 0; i < 4; i++) {
+        this.spawnWaveEnemy();
+      }
     }
 
     this.state = 'PLAYING';
@@ -985,13 +995,13 @@ export class GameEngine {
       },
       boss: {
         type: 'boss',
-        radius: 42,
-        hp: Math.round(950 * waveScale),
-        maxHp: Math.round(950 * waveScale),
-        speed: 92,
-        damage: Math.round(32 * waveScale),
+        radius: 48,
+        hp: Math.round(3200 * waveScale),
+        maxHp: Math.round(3200 * waveScale),
+        speed: 96,
+        damage: Math.round(38 * waveScale),
         color: '#ef4444',
-        goldValue: Math.round(120 + this.currentWave * 25)
+        goldValue: Math.round(250 + this.currentWave * 45)
       }
     };
 
@@ -1079,141 +1089,98 @@ export class GameEngine {
   }
 
   private render(): void {
+    // 1. Render the 3D WebGL Arena Scene via Three.js
+    this.renderer3d.renderScene({
+      player: this.player,
+      equippedWeapons: this.weapons.equipped,
+      enemies: this.enemies,
+      projectiles: this.projectiles,
+      lootDrops: this.lootDrops,
+      frostRings: this.frostRings,
+      lightningBolts: this.lightningBolts,
+      particles: this.particles,
+      screenShake: this.screenShake
+    });
+
+    // 2. Render Crisp 2D Screen-Space HUD Overlay (Health bars, Floating Damage, Boss Banner, Virtual Joystick)
     const ctx = this.ctx;
     const w = this.canvas.width;
     const h = this.canvas.height;
 
-    ctx.fillStyle = '#070a14';
-    ctx.fillRect(0, 0, w, h);
+    ctx.clearRect(0, 0, w, h);
 
-    ctx.save();
+    let activeBoss: Enemy | null = null;
 
-    const shakeX = (Math.random() - 0.5) * this.screenShake;
-    const shakeY = (Math.random() - 0.5) * this.screenShake;
-    const camX = w / 2 - this.player.x + shakeX;
-    const camY = h / 2 - this.player.y + shakeY;
-    ctx.translate(camX, camY);
-
-    this.drawArenaGrid(ctx);
-
-    for (const ring of this.frostRings) {
-      ctx.save();
-      ctx.globalAlpha = Math.max(0, ring.alpha);
-      ctx.strokeStyle = ring.color;
-      ctx.lineWidth = 4;
-      ctx.beginPath();
-      ctx.arc(ring.x, ring.y, ring.currentRadius, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.restore();
-    }
-
-    for (const drop of this.lootDrops) {
-      ctx.save();
-      ctx.beginPath();
-      if (drop.type === 'gold') {
-        ctx.fillStyle = '#facc15';
-        ctx.shadowColor = '#facc15';
-      } else if (drop.type === 'gem') {
-        ctx.fillStyle = '#38bdf8';
-        ctx.shadowColor = '#38bdf8';
-      } else {
-        ctx.fillStyle = '#4ade80';
-        ctx.shadowColor = '#4ade80';
-      }
-      ctx.shadowBlur = 10;
-      ctx.arc(drop.x, drop.y, drop.radius, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-    }
-
-    for (const e of this.enemies) {
-      ctx.save();
-      ctx.beginPath();
-      ctx.fillStyle = e.hitFlash > 0 ? '#ffffff' : e.slowTimer > 0 ? '#67e8f9' : e.color;
-      ctx.shadowColor = e.color;
-      ctx.shadowBlur = e.type === 'boss' ? 20 : 8;
-      ctx.arc(e.x, e.y, e.radius, 0, Math.PI * 2);
-      ctx.fill();
-
-      ctx.strokeStyle = '#0f172a';
-      ctx.lineWidth = 2.5;
-      ctx.stroke();
+    // Projected Enemy Health Bars
+    for (let i = 0; i < this.enemies.length; i++) {
+      const e = this.enemies[i];
+      if (e.type === 'boss') activeBoss = e;
 
       if (e.hp < e.maxHp || e.type === 'boss') {
-        const bw = e.radius * 2.2;
-        const bh = e.type === 'boss' ? 7 : 4;
-        const bx = e.x - bw / 2;
-        const by = e.y - e.radius - 12;
-        ctx.fillStyle = 'rgba(0,0,0,0.65)';
-        ctx.fillRect(bx, by, bw, bh);
+        const screenPos = this.renderer3d.worldToScreen(e.x, e.y, e.radius * 2 + 12);
+        if (!screenPos.visible) continue;
+
+        const bw = e.type === 'boss' ? 96 : Math.max(32, e.radius * 2.2);
+        const bh = e.type === 'boss' ? 8 : 5;
+        const bx = screenPos.x - bw / 2;
+        const by = screenPos.y - bh / 2;
+
+        ctx.fillStyle = 'rgba(2, 6, 23, 0.8)';
+        ctx.fillRect(bx - 1, by - 1, bw + 2, bh + 2);
         ctx.fillStyle = e.type === 'boss' ? '#f43f5e' : '#22c55e';
         ctx.fillRect(bx, by, bw * Math.max(0, e.hp / e.maxHp), bh);
       }
-      ctx.restore();
     }
 
-    this.drawPlayerAndWeapons(ctx);
+    // Prominent Top Boss Dreadnought Health Bar Banner on Boss Waves
+    if (activeBoss && this.state === 'PLAYING') {
+      const barW = Math.min(480, w * 0.78);
+      const barH = 18;
+      const barX = (w - barW) / 2;
+      const barY = 74;
+      const pct = Math.max(0, activeBoss.hp / activeBoss.maxHp);
 
-    for (const p of this.projectiles) {
       ctx.save();
-      ctx.translate(p.x, p.y);
-      if (p.isSawblade && p.rotation !== undefined) {
-        ctx.rotate(p.rotation);
-        ctx.strokeStyle = p.color;
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.arc(0, 0, p.radius, 0, Math.PI * 2);
-        ctx.stroke();
-      } else {
-        ctx.fillStyle = p.color;
-        ctx.shadowColor = p.color;
-        ctx.shadowBlur = 12;
-        ctx.beginPath();
-        ctx.arc(0, 0, p.radius, 0, Math.PI * 2);
-        ctx.fill();
-      }
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
+      ctx.strokeStyle = '#f43f5e';
+      ctx.lineWidth = 2;
+      ctx.fillRect(barX, barY, barW, barH);
+      ctx.strokeRect(barX, barY, barW, barH);
+
+      ctx.fillStyle = '#e11d48';
+      ctx.fillRect(barX + 2, barY + 2, (barW - 4) * pct, barH - 4);
+
+      ctx.font = '700 11px Orbitron, sans-serif';
+      ctx.fillStyle = '#ffffff';
+      ctx.textAlign = 'center';
+      const bossLabel =
+        I18n.getLang() === 'tr'
+          ? `⚠️ DREADNOUGHT BOSS (DALGA ${this.currentWave}) • ${Math.ceil(activeBoss.hp)} / ${activeBoss.maxHp}`
+          : `⚠️ DREADNOUGHT BOSS (WAVE ${this.currentWave}) • ${Math.ceil(activeBoss.hp)} / ${activeBoss.maxHp}`;
+      ctx.fillText(bossLabel, w / 2, barY + 13);
       ctx.restore();
     }
 
-    for (const bolt of this.lightningBolts) {
-      if (bolt.points.length < 2) continue;
-      ctx.save();
-      ctx.globalAlpha = Math.max(0, bolt.alpha);
-      ctx.strokeStyle = bolt.color;
-      ctx.shadowColor = bolt.color;
-      ctx.shadowBlur = 14;
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.moveTo(bolt.points[0].x, bolt.points[0].y);
-      for (let i = 1; i < bolt.points.length; i++) {
-        ctx.lineTo(bolt.points[i].x, bolt.points[i].y);
-      }
-      ctx.stroke();
-      ctx.restore();
-    }
+    // Projected 2D Floating Damage / Gold / Crit Numbers
+    for (let i = 0; i < this.floatingTexts.length; i++) {
+      const ft = this.floatingTexts[i];
+      const lift = (1 - ft.alpha) * 42;
+      const screenPos = this.renderer3d.worldToScreen(ft.x, ft.y, 28 + lift);
+      if (!screenPos.visible) continue;
 
-    for (const pt of this.particles) {
-      ctx.save();
-      ctx.globalAlpha = Math.max(0, pt.alpha);
-      ctx.fillStyle = pt.color;
-      ctx.beginPath();
-      ctx.arc(pt.x, pt.y, pt.radius, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-    }
-
-    for (const ft of this.floatingTexts) {
       ctx.save();
       ctx.globalAlpha = Math.max(0, ft.alpha);
       ctx.font = `700 ${Math.round(15 * ft.scale)}px Orbitron, sans-serif`;
       ctx.fillStyle = ft.color;
+      ctx.strokeStyle = 'rgba(0,0,0,0.75)';
+      ctx.lineWidth = 3;
       ctx.textAlign = 'center';
-      ctx.fillText(ft.text, ft.x, ft.y);
+      ctx.strokeText(ft.text, screenPos.x, screenPos.y);
+      ctx.fillText(ft.text, screenPos.x, screenPos.y);
       ctx.restore();
     }
 
-    ctx.restore();
-
+    // Floating Dynamic Virtual Joystick on Screen Space
     if (this.joyActive && this.state === 'PLAYING') {
       this.drawVirtualJoystick(ctx);
     }
@@ -1255,68 +1222,6 @@ export class GameEngine {
     ctx.lineWidth = 2.5;
     ctx.strokeStyle = '#ffffff';
     ctx.stroke();
-    ctx.restore();
-  }
-
-  private drawArenaGrid(ctx: CanvasRenderingContext2D): void {
-    const step = 80;
-    ctx.strokeStyle = 'rgba(56, 189, 248, 0.08)';
-    ctx.lineWidth = 1;
-
-    ctx.beginPath();
-    for (let x = 0; x <= this.worldSize; x += step) {
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, this.worldSize);
-    }
-    for (let y = 0; y <= this.worldSize; y += step) {
-      ctx.moveTo(0, y);
-      ctx.lineTo(this.worldSize, y);
-    }
-    ctx.stroke();
-
-    ctx.strokeStyle = '#38bdf8';
-    ctx.lineWidth = 4;
-    ctx.strokeRect(0, 0, this.worldSize, this.worldSize);
-  }
-
-  private drawPlayerAndWeapons(ctx: CanvasRenderingContext2D): void {
-    ctx.save();
-    const cmd = SaveManager.getInstance().data.selectedCommander;
-    const baseBodyColor =
-      cmd === 'tesla_engineer' ? '#a855f7' : cmd === 'void_phantom' ? '#f43f5e' : '#0ea5e9';
-
-    ctx.beginPath();
-    ctx.fillStyle =
-      this.player.invulnTimer > 0 && Math.floor(performance.now() / 60) % 2 === 0
-        ? '#ffffff'
-        : baseBodyColor;
-    ctx.shadowColor = baseBodyColor;
-    ctx.shadowBlur = 18;
-    ctx.arc(this.player.x, this.player.y, this.player.radius, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = '#e0f2fe';
-    ctx.stroke();
-
-    for (const w of this.weapons.equipped) {
-      if (!w) continue;
-      const wx = this.player.x + Math.cos(w.orbitAngle) * 48;
-      const wy = this.player.y + Math.sin(w.orbitAngle) * 48;
-      const tierColor = TIER_COLORS[w.tier - 1];
-
-      ctx.beginPath();
-      ctx.fillStyle = tierColor;
-      ctx.shadowColor = tierColor;
-      ctx.shadowBlur = 12;
-      ctx.arc(wx, wy, 8 + w.tier * 1.4, 0, Math.PI * 2);
-      ctx.fill();
-
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
-    }
-
     ctx.restore();
   }
 }
