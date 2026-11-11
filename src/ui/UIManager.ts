@@ -316,6 +316,7 @@ export class UIManager {
           <div class="stats-banner">
             <div><span>${I18n.t('stat_highest_wave')}</span><strong>${I18n.t('wave_label')} ${d.highestWave}</strong></div>
             <div><span>${I18n.t('stat_high_score')}</span><strong>${d.highScore.toLocaleString()}</strong></div>
+            <div><span>${I18n.t('stat_pvp_trophies')}</span><strong style="color: #facc15">🏆 ${(d.pvpTrophies || 1000).toLocaleString()}</strong></div>
             <div><span>${I18n.t('stat_ads_watched')}</span><strong>${d.rewardedAdsWatched + d.interstitialAdsWatched}</strong></div>
             <div id="menu-dev-rev" style="display: ${this.showDevMetrics ? 'flex' : 'none'}"><span>${I18n.t('stat_sim_rev')}</span><strong class="text-green">$${d.totalRevenueSimulated.toFixed(2)}</strong></div>
           </div>
@@ -339,6 +340,7 @@ export class UIManager {
 
           <div class="menu-actions">
             <button id="btn-start-run" class="btn-primary btn-xl pulse-glow">${I18n.t('btn_start_run')}</button>
+            <button id="btn-start-pvp" class="btn-ad btn-xl pulse-glow">${I18n.t('btn_start_pvp')}</button>
             <button id="btn-free-gold-ad" class="btn-ad">${I18n.t('btn_free_gold_ad')}</button>
             <button id="btn-menu-crates" class="btn-gold">🎁 ${I18n.t('hud_crates_btn')}</button>
             <button id="btn-menu-missions" class="btn-secondary">📋 ${I18n.t('hud_missions_btn')}</button>
@@ -365,7 +367,13 @@ export class UIManager {
     document.getElementById('btn-start-run')?.addEventListener('click', () => {
       AudioManager.getInstance().playClick();
       this.resetToInGameHud();
-      this.engine.startNewRun();
+      this.engine.startNewRun('SOLO');
+    });
+
+    document.getElementById('btn-start-pvp')?.addEventListener('click', () => {
+      AudioManager.getInstance().playClick();
+      this.resetToInGameHud();
+      this.engine.startNewRun('PVP');
     });
 
     document.getElementById('btn-free-gold-ad')?.addEventListener('click', async () => {

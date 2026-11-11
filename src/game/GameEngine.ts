@@ -1,15 +1,16 @@
 import { AudioManager } from '../core/AudioManager';
 import { I18n } from '../core/I18n';
-import { SaveManager } from '../core/SaveManager';
+import { CommanderId, SaveManager } from '../core/SaveManager';
 import { Renderer3D } from './Renderer3D';
 import {
   TIER_COLORS,
   WEAPON_BLUEPRINTS,
+  WeaponArchetypeId,
   WeaponInstance,
   WeaponSystem
 } from './WeaponSystem';
 
-export type EnemyType = 'swarmer' | 'speedster' | 'charger' | 'tank' | 'boss';
+export type EnemyType = 'swarmer' | 'speedster' | 'charger' | 'tank' | 'boss' | 'rival';
 
 export interface Enemy {
   id: number;
@@ -25,6 +26,10 @@ export interface Enemy {
   goldValue: number;
   slowTimer: number;
   hitFlash: number;
+  rivalName?: string;
+  rivalClass?: CommanderId;
+  shootTimer?: number;
+  strafeDir?: number;
 }
 
 export interface Projectile {
@@ -39,6 +44,7 @@ export interface Projectile {
   splashRadius: number;
   life: number;
   isSawblade?: boolean;
+  fromRival?: boolean;
   rotation?: number;
   hitEnemyIds: Set<number>;
 }
@@ -65,7 +71,7 @@ export interface LootDrop {
   vy: number;
   value: number;
   xpValue: number;
-  type: 'gold' | 'gem' | 'heal';
+  type: 'gold' | 'gem' | 'heal' | 'weapon_pod';
   radius: number;
 }
 
@@ -193,6 +199,7 @@ export class GameEngine {
   };
 
   // Wave & Run metrics
+  public gameMode: 'SOLO' | 'PVP' = 'SOLO';
   public currentWave = 1;
   public waveTimer = 25;
   public waveDuration = 25;
@@ -307,7 +314,8 @@ export class GameEngine {
     this.lastFrameTime = performance.now();
   }
 
-  public startNewRun(): void {
+  public startNewRun(mode: 'SOLO' | 'PVP' = 'SOLO'): void {
+    this.gameMode = mode;
     const save = SaveManager.getInstance();
     const cmd = save.data.selectedCommander;
 
@@ -419,6 +427,13 @@ export class GameEngine {
       this.spawnEnemy('boss');
       for (let i = 0; i < 4; i++) {
         this.spawnWaveEnemy();
+      }
+    }
+
+    // In PVP Royale mode: Spawn 3 Rival Cyber-Commanders alongside the normal enemy horde!
+    if (this.gameMode === 'PVP') {
+      for (let r = 0; r < 3; r++) {
+        this.spawnRivalCommander(r);
       }
     }
 
@@ -603,25 +618,56 @@ export class GameEngine {
 
       let alive = p.life > 0;
       if (alive) {
-        for (let j = this.enemies.length - 1; j >= 0; j--) {
-          const e = this.enemies[j];
-          if (p.hitEnemyIds.has(e.id)) continue;
-
-          const dist = Math.hypot(p.x - e.x, p.y - e.y);
-          if (dist <= p.radius + e.radius) {
-            p.hitEnemyIds.add(e.id);
-
-            if (p.splashRadius > 0) {
-              this.triggerExplosionSplash(p.x, p.y, p.splashRadius, p.damage, p.color);
-            } else {
-              this.damageEnemy(e, p.damage, p.color);
+        if (p.fromRival) {
+          // Rival projectile hits Player OR regular monsters in PvPvE crossfire!
+          const distP = Math.hypot(p.x - this.player.x, p.y - this.player.y);
+          if (distP <= p.radius + this.player.radius) {
+            alive = false;
+            if (this.player.invulnTimer <= 0) {
+              this.player.hp -= p.damage;
+              this.player.invulnTimer = 0.35;
+              this.screenShake = 8;
+              AudioManager.getInstance().playHit();
+              this.spawnFloatingText(this.player.x, this.player.y - 25, `-${p.damage} HP`, '#f43f5e', 1.2);
+              if (this.player.hp <= 0) {
+                this.player.hp = 0;
+                this.handlePlayerDeath();
+                return;
+              }
             }
+          } else {
+            for (let j = this.enemies.length - 1; j >= 0; j--) {
+              const e = this.enemies[j];
+              if (e.type === 'rival' || p.hitEnemyIds.has(e.id)) continue;
+              if (Math.hypot(p.x - e.x, p.y - e.y) <= p.radius + e.radius) {
+                p.hitEnemyIds.add(e.id);
+                this.damageEnemy(e, p.damage, p.color);
+                alive = false;
+                break;
+              }
+            }
+          }
+        } else {
+          for (let j = this.enemies.length - 1; j >= 0; j--) {
+            const e = this.enemies[j];
+            if (p.hitEnemyIds.has(e.id)) continue;
 
-            if (p.pierce > 0) {
-              p.pierce -= 1;
-            } else {
-              alive = false;
-              break;
+            const dist = Math.hypot(p.x - e.x, p.y - e.y);
+            if (dist <= p.radius + e.radius) {
+              p.hitEnemyIds.add(e.id);
+
+              if (p.splashRadius > 0) {
+                this.triggerExplosionSplash(p.x, p.y, p.splashRadius, p.damage, p.color);
+              } else {
+                this.damageEnemy(e, p.damage, p.color);
+              }
+
+              if (p.pierce > 0) {
+                p.pierce -= 1;
+              } else {
+                alive = false;
+                break;
+              }
             }
           }
         }
@@ -633,18 +679,53 @@ export class GameEngine {
     }
     this.projectiles.length = projWrite;
 
-    // 6. Update Enemies
+    // 6. Update Enemies & Rival Commanders
     for (let i = 0; i < this.enemies.length; i++) {
       const e = this.enemies[i];
       if (e.hitFlash > 0) e.hitFlash -= dt;
       if (e.slowTimer > 0) e.slowTimer -= dt;
 
       const angle = Math.atan2(this.player.y - e.y, this.player.x - e.x);
-      const speedMod = e.slowTimer > 0 ? 0.5 : 1.0;
-      e.x += Math.cos(angle) * e.speed * speedMod * dt;
-      e.y += Math.sin(angle) * e.speed * speedMod * dt;
-
       const distToPlayer = Math.hypot(this.player.x - e.x, this.player.y - e.y);
+      const speedMod = e.slowTimer > 0 ? 0.5 : 1.0;
+
+      if (e.type === 'rival') {
+        // Rival Cyber-Commander AI: Kites, strafes around the arena, and fires plasma bursts!
+        const strafe = e.strafeDir || 1;
+        let moveAngle = angle;
+        if (distToPlayer < 190) {
+          moveAngle = angle + Math.PI + strafe * 0.55; // Back-kite away from player
+        } else if (distToPlayer < 320) {
+          moveAngle = angle + (Math.PI / 2) * strafe; // Circle-strafe duel
+        }
+        e.x = Math.max(55, Math.min(this.worldSize - 55, e.x + Math.cos(moveAngle) * e.speed * speedMod * dt));
+        e.y = Math.max(55, Math.min(this.worldSize - 55, e.y + Math.sin(moveAngle) * e.speed * speedMod * dt));
+
+        e.shootTimer = (e.shootTimer ?? 1.2) - dt;
+        if (e.shootTimer <= 0 && distToPlayer < 560) {
+          e.shootTimer = 1.25;
+          const boltSpeed = 430;
+          this.projectiles.push({
+            x: e.x,
+            y: e.y,
+            vx: Math.cos(angle) * boltSpeed,
+            vy: Math.sin(angle) * boltSpeed,
+            radius: 6,
+            damage: e.damage,
+            color: e.color,
+            pierce: 0,
+            splashRadius: 0,
+            life: 1.5,
+            fromRival: true,
+            hitEnemyIds: new Set()
+          });
+          AudioManager.getInstance().playShoot(-1);
+        }
+      } else {
+        e.x += Math.cos(angle) * e.speed * speedMod * dt;
+        e.y += Math.sin(angle) * e.speed * speedMod * dt;
+      }
+
       if (distToPlayer < this.player.radius + e.radius) {
         if (this.player.invulnTimer <= 0) {
           this.player.hp -= e.damage;
@@ -693,6 +774,30 @@ export class GameEngine {
         } else if (drop.type === 'heal') {
           this.player.hp = Math.min(this.player.maxHp, this.player.hp + drop.value);
           this.spawnFloatingText(drop.x, drop.y, `+${drop.value} HP`, '#4ade80', 1.1);
+        } else if (drop.type === 'weapon_pod') {
+          const archetypes: WeaponArchetypeId[] = ['plasma', 'tesla', 'frost', 'sawblade', 'missile'];
+          const arch = archetypes[Math.floor(Math.random() * archetypes.length)];
+          const podTier = this.currentWave >= 5 && Math.random() < 0.35 ? 2 : 1;
+          if (!this.weapons.hasFreeSlot()) {
+            this.weapons.autoMergeAll();
+          }
+          if (!this.weapons.hasFreeSlot()) {
+            this.weapons.bench[WeaponSystem.MAX_BENCH - 1] = null;
+          }
+          const newWpn = this.weapons.createWeapon(arch, podTier);
+          this.weapons.addWeaponToAvailableSlot(newWpn);
+          const merges = this.weapons.autoMergeAll();
+          AudioManager.getInstance().playMerge(merges > 0 ? 4 : 2);
+          this.spawnParticles(this.player.x, this.player.y, '#c084fc', 16);
+          const podMsg =
+            I18n.getLang() === 'tr'
+              ? merges > 0
+                ? `🔧 SİLAH PODU + OTOMATİK BİRLEŞTİRME (${merges}x)!`
+                : `🔧 SİLAH PODU KUŞANILDI!`
+              : merges > 0
+                ? `🔧 WEAPON POD + AUTO-MERGE (${merges}x)!`
+                : `🔧 WEAPON POD EQUIPPED!`;
+          this.spawnFloatingText(this.player.x, this.player.y - 28, podMsg, '#c084fc', 1.28);
         }
 
         if (drop.xpValue > 0) {
@@ -763,9 +868,27 @@ export class GameEngine {
     this.onHudUpdate?.();
 
     if (leveledUp) {
-      this.state = 'LEVEL_UP';
-      AudioManager.getInstance().playMerge(4);
-      this.onLevelUp?.();
+      if (this.gameMode === 'PVP') {
+        // ZERO-PAUSE REAL-TIME PVP OVERCLOCK: Instant field buff + heal without pausing!
+        this.player.maxHp += 20;
+        const healAmt = Math.round(this.player.maxHp * 0.3);
+        this.player.hp = Math.min(this.player.maxHp, this.player.hp + healAmt);
+        this.runBuffs.damageMult += 0.15;
+        this.runBuffs.attackSpeedMult += 0.12;
+        this.runBuffs.critChance = Math.min(0.85, this.runBuffs.critChance + 0.05);
+        AudioManager.getInstance().playMerge(4);
+        this.spawnParticles(this.player.x, this.player.y, '#facc15', 24);
+        const lvlMsg =
+          I18n.getLang() === 'tr'
+            ? `⚡ OVERCLOCK SV.${this.player.level}! (+%15 HASAR & CAN)`
+            : `⚡ OVERCLOCK LVL ${this.player.level}! (+15% DMG & HEAL)`;
+        this.spawnFloatingText(this.player.x, this.player.y - 36, lvlMsg, '#facc15', 1.38);
+        this.onHudUpdate?.();
+      } else {
+        this.state = 'LEVEL_UP';
+        AudioManager.getInstance().playMerge(4);
+        this.onLevelUp?.();
+      }
     }
   }
 
@@ -945,9 +1068,37 @@ export class GameEngine {
       }
 
       this.runKills += 1;
-      SaveManager.getInstance().recordKill(1);
+      const save = SaveManager.getInstance();
+      save.recordKill(1);
       this.runScore += e.goldValue * 10;
-      this.spawnParticles(e.x, e.y, e.color, e.type === 'boss' ? 30 : 8);
+      this.spawnParticles(e.x, e.y, e.color, e.type === 'boss' || e.type === 'rival' ? 30 : 8);
+
+      if (e.type === 'rival') {
+        save.addPvpTrophies(15, 1);
+        this.screenShake = Math.max(this.screenShake, 12);
+        AudioManager.getInstance().playExplosion();
+        const elimMsg =
+          I18n.getLang() === 'tr'
+            ? `⚔️ ${e.rivalName} ELENDİ! (+15 🏆)`
+            : `⚔️ ${e.rivalName} ELIMINATED! (+15 🏆)`;
+        this.spawnFloatingText(e.x, e.y - 34, elimMsg, '#facc15', 1.4);
+      }
+
+      if (
+        this.gameMode === 'PVP' &&
+        (e.type === 'rival' || e.type === 'boss' || e.type === 'tank' || (e.type === 'charger' && Math.random() < 0.35))
+      ) {
+        this.lootDrops.push({
+          x: e.x - 14,
+          y: e.y + 10,
+          vx: 0,
+          vy: 0,
+          value: 1,
+          xpValue: 22,
+          type: 'weapon_pod',
+          radius: 12
+        });
+      }
 
       this.lootDrops.push({
         x: e.x,
@@ -955,18 +1106,18 @@ export class GameEngine {
         vx: 0,
         vy: 0,
         value: e.goldValue,
-        xpValue: e.type === 'boss' ? 80 : 12,
+        xpValue: e.type === 'boss' ? 80 : e.type === 'rival' ? 45 : 12,
         type: 'gold',
         radius: 7
       });
 
-      if (e.type === 'boss' || Math.random() < 0.04) {
+      if (e.type === 'boss' || e.type === 'rival' || Math.random() < 0.04) {
         this.lootDrops.push({
           x: e.x + 12,
           y: e.y + 8,
           vx: 0,
           vy: 0,
-          value: e.type === 'boss' ? 10 : 1,
+          value: e.type === 'boss' ? 10 : e.type === 'rival' ? 4 : 1,
           xpValue: 15,
           type: 'gem',
           radius: 9
@@ -1057,6 +1208,16 @@ export class GameEngine {
         damage: Math.round(38 * waveScale),
         color: '#ef4444',
         goldValue: Math.round(250 + this.currentWave * 45)
+      },
+      rival: {
+        type: 'rival',
+        radius: 22,
+        hp: Math.round(260 * waveScale),
+        maxHp: Math.round(260 * waveScale),
+        speed: 170,
+        damage: Math.round(16 * waveScale),
+        color: '#f59e0b',
+        goldValue: Math.round(65 + this.currentWave * 15)
       }
     };
 
@@ -1068,6 +1229,54 @@ export class GameEngine {
       slowTimer: 0,
       hitFlash: 0,
       ...cfg
+    });
+  }
+
+  private spawnRivalCommander(slotIdx: number): void {
+    const callsigns = [
+      'KAEL_X99',
+      'VALKYRIE_7',
+      'CYBER_SLAYER',
+      'NOVA_KING',
+      'VOID_HUNTER',
+      'APEX_MECH',
+      'ZERO_COOL',
+      'SHADOW_NYX'
+    ];
+    const classes: CommanderId[] = ['vanguard', 'valkyrie', 'tesla_engineer', 'void_phantom'];
+    const classColors: Record<CommanderId, string> = {
+      vanguard: '#38bdf8',
+      valkyrie: '#ec4899',
+      tesla_engineer: '#a855f7',
+      void_phantom: '#f43f5e'
+    };
+
+    const rivalClass = classes[(this.currentWave + slotIdx) % classes.length];
+    const rivalName = callsigns[(this.currentWave * 3 + slotIdx) % callsigns.length];
+    const angle = (slotIdx / 3) * Math.PI * 2 + 0.5;
+    const dist = 480;
+    const x = Math.max(80, Math.min(this.worldSize - 80, this.player.x + Math.cos(angle) * dist));
+    const y = Math.max(80, Math.min(this.worldSize - 80, this.player.y + Math.sin(angle) * dist));
+    const waveScale = Math.pow(1.24, this.currentWave - 1);
+
+    this.enemies.push({
+      id: this.enemyIdCounter++,
+      type: 'rival',
+      x,
+      y,
+      radius: 22,
+      hp: Math.round(260 * waveScale),
+      maxHp: Math.round(260 * waveScale),
+      speed: 168,
+      damage: Math.round(15 * waveScale),
+      color: classColors[rivalClass],
+      goldValue: Math.round(70 + this.currentWave * 18),
+      slowTimer: 0,
+      hitFlash: 0,
+      rivalName,
+      rivalClass,
+      shootTimer: 0.8 + slotIdx * 0.4,
+      strafeDir: slotIdx % 2 === 0 ? 1 : -1
     });
   }
 
@@ -1084,10 +1293,14 @@ export class GameEngine {
     }
     this.lootDrops = [];
 
-    const waveBonus = 25 + this.currentWave * 15;
+    const waveBonus = 25 + this.currentWave * 15 + (this.gameMode === 'PVP' ? 60 : 0);
     save.addGold(waveBonus);
     this.waveGoldEarned += waveBonus;
     this.runGoldEarned += waveBonus;
+
+    if (this.gameMode === 'PVP') {
+      save.addPvpTrophies(25, 0);
+    }
 
     if (this.currentWave > save.data.highestWave) {
       save.data.highestWave = this.currentWave;
@@ -1098,8 +1311,43 @@ export class GameEngine {
     save.save();
 
     this.tempAdSpeedWave = false;
-    this.state = 'SHOP';
     AudioManager.getInstance().playWaveComplete();
+
+    if (this.gameMode === 'PVP') {
+      // ZERO-PAUSE REAL-TIME PVP ROYALE WAVE PROGRESSION: Never open Workshop modal in PVP!
+      this.currentWave += 1;
+      const isBossWave = this.currentWave % 5 === 0;
+      this.waveDuration = isBossWave ? 45 : Math.min(40, 22 + this.currentWave * 2);
+      this.waveTimer = this.waveDuration;
+      this.waveGoldEarned = 0;
+      this.bossElapsedTime = 0;
+      this.bossRageStage = 0;
+
+      // Heal 35% HP & auto-merge weapons on the fly
+      this.player.hp = Math.min(this.player.maxHp, this.player.hp + Math.round(this.player.maxHp * 0.35));
+      this.weapons.autoMergeAll();
+
+      // Replenish Rival Commanders up to 3 active in the arena
+      const currentRivals = this.enemies.filter((e) => e.type === 'rival').length;
+      for (let r = currentRivals; r < 3; r++) {
+        this.spawnRivalCommander(r);
+      }
+
+      if (isBossWave) {
+        this.spawnEnemy('boss');
+      }
+
+      this.spawnParticles(this.player.x, this.player.y, '#facc15', 28);
+      const roundMsg =
+        I18n.getLang() === 'tr'
+          ? `⚔️ PVP RAUNT ${this.currentWave}! (+25 🏆 & +${waveBonus}🪙)`
+          : `⚔️ PVP ROUND ${this.currentWave}! (+25 🏆 & +${waveBonus}🪙)`;
+      this.spawnFloatingText(this.player.x, this.player.y - 42, roundMsg, '#facc15', 1.45);
+      this.onHudUpdate?.();
+      return;
+    }
+
+    this.state = 'SHOP';
     this.onWaveComplete?.();
   }
 
@@ -1166,26 +1414,64 @@ export class GameEngine {
     ctx.clearRect(0, 0, w, h);
 
     let activeBoss: Enemy | null = null;
+    let rivalsAlive = 0;
 
-    // Projected Enemy Health Bars
+    // Projected Enemy Health Bars & Rival Callsign Nameplates
     for (let i = 0; i < this.enemies.length; i++) {
       const e = this.enemies[i];
       if (e.type === 'boss') activeBoss = e;
+      if (e.type === 'rival') rivalsAlive += 1;
 
-      if (e.hp < e.maxHp || e.type === 'boss') {
-        const screenPos = this.renderer3d.worldToScreen(e.x, e.y, e.radius * 2 + 12);
+      if (e.hp < e.maxHp || e.type === 'boss' || e.type === 'rival') {
+        const heightOff = e.type === 'rival' ? 68 : e.radius * 2 + 12;
+        const screenPos = this.renderer3d.worldToScreen(e.x, e.y, heightOff);
         if (!screenPos.visible) continue;
 
-        const bw = e.type === 'boss' ? 96 : Math.max(32, e.radius * 2.2);
-        const bh = e.type === 'boss' ? 8 : 5;
+        const bw = e.type === 'boss' ? 96 : e.type === 'rival' ? 68 : Math.max(32, e.radius * 2.2);
+        const bh = e.type === 'boss' ? 8 : e.type === 'rival' ? 7 : 5;
         const bx = screenPos.x - bw / 2;
         const by = screenPos.y - bh / 2;
 
-        ctx.fillStyle = 'rgba(2, 6, 23, 0.8)';
+        ctx.fillStyle = 'rgba(2, 6, 23, 0.85)';
         ctx.fillRect(bx - 1, by - 1, bw + 2, bh + 2);
-        ctx.fillStyle = e.type === 'boss' ? '#f43f5e' : '#22c55e';
+        ctx.fillStyle = e.type === 'boss' ? '#f43f5e' : e.type === 'rival' ? '#f59e0b' : '#22c55e';
         ctx.fillRect(bx, by, bw * Math.max(0, e.hp / e.maxHp), bh);
+
+        if (e.type === 'rival' && e.rivalName) {
+          ctx.save();
+          ctx.font = '700 11px Orbitron, sans-serif';
+          ctx.fillStyle = '#facc15';
+          ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+          ctx.lineWidth = 3;
+          ctx.textAlign = 'center';
+          const tag = `⚔️ [RIVAL] ${e.rivalName}`;
+          ctx.strokeText(tag, screenPos.x, by - 6);
+          ctx.fillText(tag, screenPos.x, by - 6);
+          ctx.restore();
+        }
       }
+    }
+
+    // PVP Royale Status Banner
+    if (this.gameMode === 'PVP' && this.state === 'PLAYING') {
+      const trophies = SaveManager.getInstance().data.pvpTrophies || 1000;
+      const pvpY = activeBoss ? 102 : 74;
+      ctx.save();
+      ctx.font = '700 12px Orbitron, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
+      ctx.strokeStyle = '#f59e0b';
+      ctx.lineWidth = 1.5;
+      const boxW = 340;
+      ctx.fillRect((w - boxW) / 2, pvpY, boxW, 24);
+      ctx.strokeRect((w - boxW) / 2, pvpY, boxW, 24);
+      ctx.fillStyle = '#facc15';
+      const pvpText =
+        I18n.getLang() === 'tr'
+          ? `⚔️ PVP ROYALE • RAKİP: ${rivalsAlive}/3 • 🏆 ${trophies}`
+          : `⚔️ PVP ROYALE • RIVALS ALIVE: ${rivalsAlive}/3 • 🏆 ${trophies}`;
+      ctx.fillText(pvpText, w / 2, pvpY + 16);
+      ctx.restore();
     }
 
     // Prominent Top Boss Dreadnought Health Bar + Rage Stage + 34s Detonation Timer

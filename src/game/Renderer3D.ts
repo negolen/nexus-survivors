@@ -886,6 +886,11 @@ export class Renderer3D {
         if (entry.wheels) {
           entry.wheels.forEach((wh) => (wh.rotation.z -= 0.08));
         }
+      } else if (e.type === 'rival') {
+        entry.group.rotation.y = -angleToPlayer;
+        if (entry.shieldsGroup) {
+          entry.shieldsGroup.rotation.y = now * 4.5 + e.id;
+        }
       } else if (e.type === 'boss') {
         const rageScale = 1 + bossRageStage * 0.1;
         entry.group.scale.setScalar(rageScale);
@@ -1073,6 +1078,54 @@ export class Renderer3D {
       return { type: e.type, group, mainMat, accentMat, turret, wheels };
     }
 
+    // 4.5. RIVAL COMMANDER: Full Multi-Part Enemy Cyber-Commander Mech + 3 Orbiting Weapon Drones
+    if (e.type === 'rival') {
+      const targetRing = new THREE.Mesh(
+        new THREE.TorusGeometry(26, 2.2, 12, 32),
+        new THREE.MeshBasicMaterial({ color: 0xf43f5e })
+      );
+      targetRing.rotation.x = Math.PI / 2;
+      targetRing.position.y = -10;
+      group.add(targetRing);
+
+      const lowerHull = new THREE.Mesh(new THREE.CylinderGeometry(14, 18, 12, 16), darkMat);
+      lowerHull.position.y = -4;
+      const torso = new THREE.Mesh(new THREE.CylinderGeometry(14, 12, 15, 16), mainMat);
+      torso.position.y = 7;
+
+      const paulL = new THREE.Mesh(new THREE.BoxGeometry(12, 9, 10), mainMat);
+      paulL.position.set(0, 11, -15);
+      const paulR = new THREE.Mesh(new THREE.BoxGeometry(12, 9, 10), mainMat);
+      paulR.position.set(0, 11, 15);
+
+      const head = new THREE.Mesh(new THREE.SphereGeometry(8.5, 16, 16), darkMat);
+      head.position.set(0, 18, 0);
+      const visor = new THREE.Mesh(new THREE.BoxGeometry(8, 3.5, 13), accentMat);
+      visor.position.set(5, 18, 0);
+
+      const barrelGeo = new THREE.CylinderGeometry(2.2, 2.2, 18, 12);
+      barrelGeo.rotateZ(Math.PI / 2);
+      const bL = new THREE.Mesh(barrelGeo, accentMat);
+      bL.position.set(14, 8, -12);
+      const bR = new THREE.Mesh(barrelGeo, accentMat);
+      bR.position.set(14, 8, 12);
+
+      // 3 Orbiting 3D Weapon Drones around the Rival Commander
+      const shieldsGroup = new THREE.Group();
+      shieldsGroup.position.y = 10;
+      const droneGeo = new THREE.OctahedronGeometry(5.5, 1);
+      for (let d = 0; d < 3; d++) {
+        const da = (d / 3) * Math.PI * 2;
+        const drone = new THREE.Mesh(droneGeo, accentMat);
+        drone.position.set(Math.cos(da) * 34, 0, Math.sin(da) * 34);
+        shieldsGroup.add(drone);
+      }
+
+      group.add(lowerHull, torso, paulL, paulR, head, visor, bL, bR, shieldsGroup);
+      this.enableShadowsRecursive(group);
+      return { type: e.type, group, mainMat, accentMat, shieldsGroup };
+    }
+
     // 5. BOSS: Colossal High-Poly Dreadnought Citadel with Volumetric Glow + 3 Gyro Rings
     const innerStar = new THREE.Mesh(
       new THREE.IcosahedronGeometry(27, 2),
@@ -1199,10 +1252,18 @@ export class Renderer3D {
 
       const d = lootDrops[i];
       mesh.visible = true;
-      const hex = d.type === 'gold' ? 0xfacc15 : d.type === 'gem' ? 0x38bdf8 : 0x4ade80;
+      const hex =
+        d.type === 'gold'
+          ? 0xfacc15
+          : d.type === 'gem'
+            ? 0x38bdf8
+            : d.type === 'weapon_pod'
+              ? 0xc084fc
+              : 0x4ade80;
       const mat = mesh.material as THREE.MeshPhysicalMaterial;
       mat.color.setHex(hex);
       mat.emissive.setHex(hex);
+      mesh.scale.setScalar(d.type === 'weapon_pod' ? 1.45 : 1.0);
 
       mesh.position.set(d.x, 10 + Math.sin(now * 5 + i) * 3, d.y);
       mesh.rotation.y = now * 3 + i;

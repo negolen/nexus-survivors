@@ -33,6 +33,8 @@ export interface SaveData {
   techShards: number;
   highScore: number;
   highestWave: number;
+  pvpTrophies: number;
+  pvpRivalsEliminated: number;
   totalKills: number;
   totalMerges: number;
   totalLevelUps: number;
@@ -59,6 +61,8 @@ const DEFAULT_SAVE: SaveData = {
   techShards: 0,
   highScore: 0,
   highestWave: 1,
+  pvpTrophies: 1000,
+  pvpRivalsEliminated: 0,
   totalKills: 0,
   totalMerges: 0,
   totalLevelUps: 0,
@@ -196,6 +200,12 @@ export class SaveManager {
 
   public recordLevelUp(count = 1): void {
     this.data.totalLevelUps += count;
+    this.save();
+  }
+
+  public addPvpTrophies(delta: number, rivalsKilled = 0): void {
+    this.data.pvpTrophies = Math.max(0, Math.floor((this.data.pvpTrophies || 1000) + delta));
+    this.data.pvpRivalsEliminated = (this.data.pvpRivalsEliminated || 0) + rivalsKilled;
     this.save();
   }
 
