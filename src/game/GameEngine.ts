@@ -28,6 +28,7 @@ export interface Enemy {
   hitFlash: number;
   rivalName?: string;
   rivalClass?: CommanderId;
+  rivalLevel?: number;
   shootTimer?: number;
   strafeDir?: number;
 }
@@ -348,6 +349,17 @@ export class GameEngine {
 
     if (save.data.starterPackBought) {
       this.weapons.addWeaponToAvailableSlot(this.weapons.createWeapon('plasma', 3));
+    }
+
+    // In PVP mode, your Starting Gold Meta-Upgrade & Commander Power Level convert directly into bonus starting orbital weapons &auto-merge!
+    if (mode === 'PVP') {
+      const bonusPods = Math.min(4, Math.floor(save.data.meta.startingGoldLevel / 2) + (save.data.techShards >= 5 ? 1 : 0));
+      const archetypes: WeaponArchetypeId[] = ['plasma', 'tesla', 'frost', 'sawblade', 'missile'];
+      for (let b = 0; b < bonusPods; b++) {
+        const arch = archetypes[(b + save.data.meta.damageLevel) % archetypes.length];
+        this.weapons.addWeaponToAvailableSlot(this.weapons.createWeapon(arch, 1));
+      }
+      this.weapons.autoMergeAll();
     }
 
     this.player.level = 1;
@@ -1257,7 +1269,11 @@ export class GameEngine {
     const dist = 480;
     const x = Math.max(80, Math.min(this.worldSize - 80, this.player.x + Math.cos(angle) * dist));
     const y = Math.max(80, Math.min(this.worldSize - 80, this.player.y + Math.sin(angle) * dist));
-    const waveScale = Math.pow(1.24, this.currentWave - 1);
+
+    const save = SaveManager.getInstance();
+    const trophyTier = Math.max(0, Math.floor(((save.data.pvpTrophies || 1000) - 1000) / 120));
+    const rivalLevel = Math.max(1, this.currentWave * 2 + trophyTier + slotIdx);
+    const levelScale = Math.pow(1.16, rivalLevel - 1);
 
     this.enemies.push({
       id: this.enemyIdCounter++,
@@ -1265,17 +1281,18 @@ export class GameEngine {
       x,
       y,
       radius: 22,
-      hp: Math.round(260 * waveScale),
-      maxHp: Math.round(260 * waveScale),
-      speed: 168,
-      damage: Math.round(15 * waveScale),
+      hp: Math.round(280 * levelScale),
+      maxHp: Math.round(280 * levelScale),
+      speed: Math.min(240, 165 + rivalLevel * 3),
+      damage: Math.round(16 * levelScale),
       color: classColors[rivalClass],
-      goldValue: Math.round(70 + this.currentWave * 18),
+      goldValue: Math.round(80 + rivalLevel * 22),
       slowTimer: 0,
       hitFlash: 0,
       rivalName,
       rivalClass,
-      shootTimer: 0.8 + slotIdx * 0.4,
+      rivalLevel,
+      shootTimer: 0.8 + slotIdx * 0.35,
       strafeDir: slotIdx % 2 === 0 ? 1 : -1
     });
   }
@@ -1444,7 +1461,7 @@ export class GameEngine {
           ctx.strokeStyle = 'rgba(0,0,0,0.85)';
           ctx.lineWidth = 3;
           ctx.textAlign = 'center';
-          const tag = `⚔️ [RIVAL] ${e.rivalName}`;
+          const tag = `⚔️ [LVL.${e.rivalLevel || 1}] ${e.rivalName}`;
           ctx.strokeText(tag, screenPos.x, by - 6);
           ctx.fillText(tag, screenPos.x, by - 6);
           ctx.restore();
@@ -1452,48 +1469,49 @@ export class GameEngine {
       }
     }
 
-    // PVP Royale Status Banner
+    // PVP Royale Status Banner (Positioned cleanly below Top HUD & Boss Bar)
     if (this.gameMode === 'PVP' && this.state === 'PLAYING') {
       const trophies = SaveManager.getInstance().data.pvpTrophies || 1000;
-      const pvpY = activeBoss ? 102 : 74;
+      const pwrLvl = SaveManager.getInstance().getCommanderPowerLevel();
+      const pvpY = activeBoss ? 148 : 112;
       ctx.save();
       ctx.font = '700 12px Orbitron, sans-serif';
       ctx.textAlign = 'center';
       ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
       ctx.strokeStyle = '#f59e0b';
       ctx.lineWidth = 1.5;
-      const boxW = 340;
+      const boxW = Math.min(440, w * 0.92);
       ctx.fillRect((w - boxW) / 2, pvpY, boxW, 24);
       ctx.strokeRect((w - boxW) / 2, pvpY, boxW, 24);
       ctx.fillStyle = '#facc15';
       const pvpText =
         I18n.getLang() === 'tr'
-          ? `⚔️ PVP ROYALE • RAKİP: ${rivalsAlive}/3 • 🏆 ${trophies}`
-          : `⚔️ PVP ROYALE • RIVALS ALIVE: ${rivalsAlive}/3 • 🏆 ${trophies}`;
+          ? `⚔️ PVP • GÜÇ SV.${pwrLvl} • RAKİP: ${rivalsAlive}/3 • 🏆 ${trophies}`
+          : `⚔️ PVP • PWR LVL.${pwrLvl} • RIVALS: ${rivalsAlive}/3 • 🏆 ${trophies}`;
       ctx.fillText(pvpText, w / 2, pvpY + 16);
       ctx.restore();
     }
 
-    // Prominent Top Boss Dreadnought Health Bar + Rage Stage + 34s Detonation Timer
+    // Prominent Top Boss Dreadnought Health Bar + Rage Stage + 34s Detonation Timer (Moved down to Y=114 so it is never covered by Top HUD!)
     if (activeBoss && this.state === 'PLAYING') {
-      const barW = Math.min(560, w * 0.84);
-      const barH = 22;
+      const barW = Math.min(580, w * 0.88);
+      const barH = 26;
       const barX = (w - barW) / 2;
-      const barY = 72;
+      const barY = 114;
       const pct = Math.max(0, activeBoss.hp / activeBoss.maxHp);
       const detLeft = Math.max(0, 34 - this.bossElapsedTime);
 
       ctx.save();
-      ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.95)';
       ctx.strokeStyle = detLeft < 10 ? '#facc15' : '#f43f5e';
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 2.5;
       ctx.fillRect(barX, barY, barW, barH);
       ctx.strokeRect(barX, barY, barW, barH);
 
       ctx.fillStyle = this.bossRageStage > 0 ? '#f97316' : '#e11d48';
       ctx.fillRect(barX + 2, barY + 2, (barW - 4) * pct, barH - 4);
 
-      ctx.font = '700 11px Orbitron, sans-serif';
+      ctx.font = '700 12px Orbitron, sans-serif';
       ctx.fillStyle = '#ffffff';
       ctx.textAlign = 'center';
       const rageBadge = this.bossRageStage > 0 ? ` • 🔥 RAGE ${this.bossRageStage}/3` : '';
@@ -1501,7 +1519,7 @@ export class GameEngine {
         I18n.getLang() === 'tr'
           ? `⚠️ BOSS (HP ${Math.ceil(activeBoss.hp)}/${activeBoss.maxHp})${rageBadge} • 💥 İNFİLAK: ${detLeft.toFixed(1)}sn`
           : `⚠️ BOSS (HP ${Math.ceil(activeBoss.hp)}/${activeBoss.maxHp})${rageBadge} • 💥 DETONATION: ${detLeft.toFixed(1)}s`;
-      ctx.fillText(bossLabel, w / 2, barY + 15);
+      ctx.fillText(bossLabel, w / 2, barY + 17);
       ctx.restore();
     }
 

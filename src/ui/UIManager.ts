@@ -152,6 +152,11 @@ export class UIManager {
         </div>
 
         <div class="hud-right">
+          ${
+            this.engine.state !== 'MENU'
+              ? `<button id="btn-hud-home" class="btn-hud" style="border-color: rgba(244,63,94,0.55); color: #fda4af" title="Return to Main Menu">${I18n.t('btn_main_menu')}</button>`
+              : ''
+          }
           <button id="btn-speed-toggle" class="btn-hud ${isSpeed2x ? 'active-speed' : ''}">
             ⚡ ${isSpeed2x ? I18n.t('speed_2x_on') : I18n.t('speed_1x_btn')}
           </button>
@@ -180,6 +185,13 @@ export class UIManager {
 
   private bindTopHudEvents(): void {
     this.cacheHudElements();
+
+    document.getElementById('btn-hud-home')?.addEventListener('click', () => {
+      AudioManager.getInstance().playClick();
+      SaveManager.getInstance().recordRunStats(this.engine.currentWave, this.engine.runScore);
+      this.engine.state = 'MENU';
+      this.renderMainMenu();
+    });
 
     document.getElementById('btn-speed-toggle')?.addEventListener('click', async () => {
       AudioManager.getInstance().playClick();
@@ -331,11 +343,17 @@ export class UIManager {
             </div>
           </div>
 
-          <div class="meta-upgrades-grid">
-            ${this.renderMetaUpgradeCard('damageLevel', I18n.t('meta_dmg_title'), I18n.t('meta_dmg_desc'))}
-            ${this.renderMetaUpgradeCard('maxHpLevel', I18n.t('meta_hp_title'), I18n.t('meta_hp_desc'))}
-            ${this.renderMetaUpgradeCard('attackSpeedLevel', I18n.t('meta_spd_title'), I18n.t('meta_spd_desc'))}
-            ${this.renderMetaUpgradeCard('startingGoldLevel', I18n.t('meta_gold_title'), I18n.t('meta_gold_desc'))}
+          <div class="workshop-section">
+            <h3>${isTr ? `⚡ KALICI KOMUTAN GÜÇLENDİRME LABORATUVARI (PVE & PVP ORTAK GÜÇ SV.${save.getCommanderPowerLevel()})` : `⚡ PERMANENT COMMANDER UPGRADE LAB (SHARED PVE & PVP POWER LVL.${save.getCommanderPowerLevel()})`}</h3>
+            <p style="font-size:0.85rem; color:#94a3b8; margin-bottom:10px;">
+              ${isTr ? 'Solo (PvE) ve PvP modlarında kazandığınız Altın 🪙 ve Elmasları 💎 burada harcayarak komutanınızı kalıcı olarak güçlendirin ve daha yüksek seviyeli PvP rakiplerini ezin!' : 'Spend Gold 🪙 and Gems 💎 earned in Solo (PvE) & PvP modes to permanently upgrade your Commander and dominate higher-level PvP Rivals!'}
+            </p>
+            <div class="meta-upgrades-grid">
+              ${this.renderMetaUpgradeCard('damageLevel', I18n.t('meta_dmg_title'), I18n.t('meta_dmg_desc'))}
+              ${this.renderMetaUpgradeCard('maxHpLevel', I18n.t('meta_hp_title'), I18n.t('meta_hp_desc'))}
+              ${this.renderMetaUpgradeCard('attackSpeedLevel', I18n.t('meta_spd_title'), I18n.t('meta_spd_desc'))}
+              ${this.renderMetaUpgradeCard('startingGoldLevel', I18n.t('meta_gold_title'), I18n.t('meta_gold_desc'))}
+            </div>
           </div>
 
           <div class="menu-actions">

@@ -203,6 +203,21 @@ export class SaveManager {
     this.save();
   }
 
+  public recordRunStats(waveReached: number, scoreReached: number): void {
+    if (waveReached > this.data.highestWave) {
+      this.data.highestWave = waveReached;
+    }
+    if (scoreReached > this.data.highScore) {
+      this.data.highScore = scoreReached;
+    }
+    this.save();
+  }
+
+  public getCommanderPowerLevel(): number {
+    const m = this.data.meta;
+    return 1 + m.damageLevel + m.maxHpLevel + m.attackSpeedLevel + m.startingGoldLevel + Math.floor(this.data.techShards / 2);
+  }
+
   public addPvpTrophies(delta: number, rivalsKilled = 0): void {
     this.data.pvpTrophies = Math.max(0, Math.floor((this.data.pvpTrophies || 1000) + delta));
     this.data.pvpRivalsEliminated = (this.data.pvpRivalsEliminated || 0) + rivalsKilled;
