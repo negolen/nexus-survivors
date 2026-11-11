@@ -49,6 +49,7 @@ export class UIManager {
   private shopOffers: ShopOffer[] = [];
   private draftedLevelCards: TacticalCard[] = [];
   private waveBonusDoubled = false;
+  private showDevMetrics = typeof window !== 'undefined' && window.location.search.includes('dev=1');
 
   // Cached DOM references to eliminate 60FPS per-frame document.getElementById queries
   private hudEls: {
@@ -76,6 +77,16 @@ export class UIManager {
     this.engine.onPlayerDeath = () => this.openDeathModal();
 
     SaveManager.getInstance().onChange(() => this.updateTopHudValues());
+
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'F9') {
+        this.showDevMetrics = !this.showDevMetrics;
+        const revPill = document.getElementById('hud-rev');
+        if (revPill) revPill.style.display = this.showDevMetrics ? 'flex' : 'none';
+        const menuRev = document.getElementById('menu-dev-rev');
+        if (menuRev) menuRev.style.display = this.showDevMetrics ? 'flex' : 'none';
+      }
+    });
 
     this.renderMainMenu();
   }
@@ -134,7 +145,7 @@ export class UIManager {
             <span>💎</span>
             <strong id="hud-gems">${save.gems.toLocaleString()}</strong>
           </div>
-          <div class="currency-pill revenue-pill" title="Simulated Publisher Ad + IAP Revenue Tracker">
+          <div id="hud-rev" class="currency-pill revenue-pill" style="display: ${this.showDevMetrics ? 'flex' : 'none'}" title="Developer Revenue Tracker (Toggle with F9 or ?dev=1)">
             <span>📈 REV:</span>
             <strong id="hud-revenue">$${save.totalRevenueSimulated.toFixed(2)}</strong>
           </div>
@@ -306,15 +317,16 @@ export class UIManager {
             <div><span>${I18n.t('stat_highest_wave')}</span><strong>${I18n.t('wave_label')} ${d.highestWave}</strong></div>
             <div><span>${I18n.t('stat_high_score')}</span><strong>${d.highScore.toLocaleString()}</strong></div>
             <div><span>${I18n.t('stat_ads_watched')}</span><strong>${d.rewardedAdsWatched + d.interstitialAdsWatched}</strong></div>
-            <div><span>${I18n.t('stat_sim_rev')}</span><strong class="text-green">$${d.totalRevenueSimulated.toFixed(2)}</strong></div>
+            <div id="menu-dev-rev" style="display: ${this.showDevMetrics ? 'flex' : 'none'}"><span>${I18n.t('stat_sim_rev')}</span><strong class="text-green">$${d.totalRevenueSimulated.toFixed(2)}</strong></div>
           </div>
 
           <div class="workshop-section">
             <h3>${I18n.t('commanders_title')}</h3>
             <div class="commanders-grid">
-              ${this.renderCommanderCard('vanguard', '🤖', I18n.t('cmd_vanguard_name'), I18n.t('cmd_vanguard_desc'), '#0ea5e9', 0, 0)}
-              ${this.renderCommanderCard('tesla_engineer', '🌩️', I18n.t('cmd_tesla_name'), I18n.t('cmd_tesla_desc'), '#a855f7', 1500, 100)}
-              ${this.renderCommanderCard('void_phantom', '🥷', I18n.t('cmd_phantom_name'), I18n.t('cmd_phantom_desc'), '#f43f5e', 0, 250)}
+              ${this.renderCommanderCard('vanguard', '🤖', I18n.t('cmd_vanguard_name'), I18n.t('cmd_vanguard_role'), I18n.t('cmd_vanguard_desc'), '#0ea5e9', false, 0)}
+              ${this.renderCommanderCard('valkyrie', '🪽', I18n.t('cmd_valkyrie_name'), I18n.t('cmd_valkyrie_role'), I18n.t('cmd_valkyrie_desc'), '#ec4899', false, 0)}
+              ${this.renderCommanderCard('tesla_engineer', '🌩️', I18n.t('cmd_tesla_name'), I18n.t('cmd_tesla_role'), I18n.t('cmd_tesla_desc'), '#a855f7', true, 180)}
+              ${this.renderCommanderCard('void_phantom', '🥷', I18n.t('cmd_phantom_name'), I18n.t('cmd_phantom_role'), I18n.t('cmd_phantom_desc'), '#f43f5e', true, 250)}
             </div>
           </div>
 
@@ -391,14 +403,11 @@ export class UIManager {
           save.save();
           AudioManager.getInstance().playClick();
           this.renderMainMenu();
-        } else if (mode === 'gold' && id === 'tesla_engineer') {
-          if (save.spendGold(1500)) {
-            save.unlockCommander(id);
-            AudioManager.getInstance().playMerge(3);
-            this.renderMainMenu();
-          }
+        } else if (mode === 'vip') {
+          AudioManager.getInstance().playClick();
+          this.openStoreModal();
         } else if (mode === 'gems') {
-          const gemCost = id === 'tesla_engineer' ? 100 : 250;
+          const gemCost = id === 'tesla_engineer' ? 180 : 250;
           if (save.spendGems(gemCost)) {
             save.unlockCommander(id);
             AudioManager.getInstance().playMerge(4);
@@ -427,9 +436,10 @@ export class UIManager {
     id: CommanderId,
     icon: string,
     name: string,
+    roleBadge: string,
     desc: string,
     color: string,
-    goldCost: number,
+    isVipCommander: boolean,
     gemCost: number
   ): string {
     const save = SaveManager.getInstance();
@@ -446,11 +456,7 @@ export class UIManager {
     } else {
       actionHtml = `
         <div class="cmd-unlock-btns">
-          ${
-            goldCost > 0
-              ? `<button data-cmd-select="${id}" data-cmd-mode="gold" class="btn-buy">${I18n.t('cmd_unlock_gold')}</button>`
-              : ''
-          }
+          <button data-cmd-select="${id}" data-cmd-mode="vip" class="btn-buy">${I18n.t('cmd_unlock_vip')}</button>
           <button data-cmd-select="${id}" data-cmd-mode="gems" class="btn-ad">${I18n.t('cmd_unlock_gems', { gems: gemCost })}</button>
         </div>
       `;
@@ -461,6 +467,7 @@ export class UIManager {
         <div class="cmd-top">
           <span class="cmd-icon" style="background: ${color}22; border-color: ${color}">${icon}</span>
           <div>
+            <span class="lvl-tag" style="margin-left:0; color: ${isVipCommander ? '#facc15' : '#38bdf8'}">${roleBadge}</span>
             <h4>${name}</h4>
             <p>${desc}</p>
           </div>
@@ -1204,6 +1211,7 @@ export class UIManager {
                 this.engine.weapons.addWeaponToAvailableSlot(this.engine.weapons.createWeapon('plasma', 3));
               } else if (id === 'vip_speed') {
                 save.data.vipUnlocked = true;
+                save.unlockCommander('tesla_engineer');
                 save.unlockCommander('void_phantom');
                 save.addGems(500);
                 this.engine.gameSpeedMultiplier = 2;

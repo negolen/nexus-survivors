@@ -196,6 +196,8 @@ export class GameEngine {
   public currentWave = 1;
   public waveTimer = 25;
   public waveDuration = 25;
+  public bossElapsedTime = 0;
+  public bossRageStage = 0;
   public runGoldEarned = 0;
   public waveGoldEarned = 0;
   public runKills = 0;
@@ -314,20 +316,23 @@ export class GameEngine {
 
     this.runBuffs = {
       damageMult: 0,
-      attackSpeedMult: 0,
-      critChance: cmd === 'void_phantom' ? 0.15 : 0,
+      attackSpeedMult: cmd === 'valkyrie' ? 0.15 : 0,
+      critChance: cmd === 'void_phantom' ? 0.2 : 0,
       goldMult: 0,
       magnetMult: 0,
-      moveSpeedMult: cmd === 'void_phantom' ? 0.25 : 0
+      moveSpeedMult: cmd === 'void_phantom' ? 0.3 : cmd === 'valkyrie' ? 0.12 : 0
     };
 
-    // Configure starting weapons by Selected Commander
-    if (cmd === 'tesla_engineer') {
-      this.weapons.equipped[0] = this.weapons.createWeapon('tesla', 1);
+    // Configure starting weapons by Selected Commander (2 Free + 2 VIP)
+    if (cmd === 'valkyrie') {
+      this.weapons.equipped[0] = this.weapons.createWeapon('frost', 1);
+      this.weapons.equipped[1] = this.weapons.createWeapon('plasma', 1);
+    } else if (cmd === 'tesla_engineer') {
+      this.weapons.equipped[0] = this.weapons.createWeapon('tesla', 2);
       this.weapons.equipped[1] = this.weapons.createWeapon('plasma', 1);
     } else if (cmd === 'void_phantom') {
       this.weapons.equipped[0] = this.weapons.createWeapon('sawblade', 2);
-      this.weapons.equipped[1] = this.weapons.createWeapon('plasma', 1);
+      this.weapons.equipped[1] = this.weapons.createWeapon('missile', 1);
     } else {
       this.weapons.equipped[0] = this.weapons.createWeapon('plasma', 1);
       this.weapons.equipped[1] = this.weapons.createWeapon('plasma', 1);
@@ -402,6 +407,8 @@ export class GameEngine {
     this.lightningBolts = [];
     this.frostRings = [];
     this.lootDrops = [];
+    this.bossElapsedTime = 0;
+    this.bossRageStage = 0;
 
     if (!save.data.vipUnlocked && !this.tempAdSpeedWave) {
       this.gameSpeedMultiplier = 1;
@@ -424,6 +431,8 @@ export class GameEngine {
     this.player.hp = this.player.maxHp;
     this.player.invulnTimer = 3.0;
     this.screenShake = 18;
+    this.bossElapsedTime = 0;
+    this.bossRageStage = 0;
     AudioManager.getInstance().playExplosion();
 
     let writeIdx = 0;
@@ -457,12 +466,58 @@ export class GameEngine {
   private update(dt: number): void {
     const save = SaveManager.getInstance();
 
-    // 1. Wave Timer
+    // 1. Check Active Boss, Enrage Stages (10s/20s/30s), & 34s Supernova Detonation
+    let activeBoss: Enemy | null = null;
+    for (let i = 0; i < this.enemies.length; i++) {
+      if (this.enemies[i].type === 'boss') {
+        activeBoss = this.enemies[i];
+        break;
+      }
+    }
+
     this.waveTimer -= dt;
-    if (this.waveTimer <= 0) {
-      this.waveTimer = 0;
-      this.completeWave();
-      return;
+    if (activeBoss) {
+      // Boss waves do NOT complete until the Boss is eliminated!
+      if (this.waveTimer < 0) this.waveTimer = 0;
+
+      this.bossElapsedTime += dt;
+      const targetRage = Math.min(3, Math.floor(this.bossElapsedTime / 10));
+      if (targetRage > this.bossRageStage) {
+        this.bossRageStage = targetRage;
+        activeBoss.damage = Math.round(activeBoss.damage * 1.35);
+        activeBoss.speed = Math.round(activeBoss.speed * 1.18);
+        activeBoss.radius = Math.round(activeBoss.radius * 1.08);
+        this.screenShake = 15;
+        AudioManager.getInstance().playExplosion();
+        const rageMsg =
+          I18n.getLang() === 'tr'
+            ? `🔥 BOSS ÖFKE EVRESİ ${this.bossRageStage}! (+%35 HASAR)`
+            : `🔥 BOSS RAGE STAGE ${this.bossRageStage}! (+35% DMG)`;
+        this.spawnFloatingText(activeBoss.x, activeBoss.y - 30, rageMsg, '#f97316', 1.45);
+      }
+
+      // 34-Second Arena Supernova Detonation if Boss is still alive!
+      if (this.bossElapsedTime >= 34.0) {
+        this.screenShake = 35;
+        AudioManager.getInstance().playExplosion();
+        this.spawnParticles(activeBoss.x, activeBoss.y, '#ef4444', 45);
+        this.spawnParticles(this.player.x, this.player.y, '#facc15', 40);
+        const detMsg =
+          I18n.getLang() === 'tr'
+            ? '💥 ARENA İNFİLAK ETTİ! (34sn SÜRE DOLDU)'
+            : '💥 ARENA DETONATED! (34s LIMIT)';
+        this.spawnFloatingText(this.player.x, this.player.y - 30, detMsg, '#ef4444', 1.55);
+        this.player.hp = 0;
+        this.handlePlayerDeath();
+        return;
+      }
+    } else {
+      this.bossRageStage = 0;
+      if (this.waveTimer <= 0) {
+        this.waveTimer = 0;
+        this.completeWave();
+        return;
+      }
     }
 
     // 2. Player Movement
@@ -1099,7 +1154,8 @@ export class GameEngine {
       frostRings: this.frostRings,
       lightningBolts: this.lightningBolts,
       particles: this.particles,
-      screenShake: this.screenShake
+      screenShake: this.screenShake,
+      bossRageStage: this.bossRageStage
     });
 
     // 2. Render Crisp 2D Screen-Space HUD Overlay (Health bars, Floating Damage, Boss Banner, Virtual Joystick)
@@ -1132,32 +1188,34 @@ export class GameEngine {
       }
     }
 
-    // Prominent Top Boss Dreadnought Health Bar Banner on Boss Waves
+    // Prominent Top Boss Dreadnought Health Bar + Rage Stage + 34s Detonation Timer
     if (activeBoss && this.state === 'PLAYING') {
-      const barW = Math.min(480, w * 0.78);
-      const barH = 18;
+      const barW = Math.min(560, w * 0.84);
+      const barH = 22;
       const barX = (w - barW) / 2;
-      const barY = 74;
+      const barY = 72;
       const pct = Math.max(0, activeBoss.hp / activeBoss.maxHp);
+      const detLeft = Math.max(0, 34 - this.bossElapsedTime);
 
       ctx.save();
-      ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
-      ctx.strokeStyle = '#f43f5e';
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
+      ctx.strokeStyle = detLeft < 10 ? '#facc15' : '#f43f5e';
       ctx.lineWidth = 2;
       ctx.fillRect(barX, barY, barW, barH);
       ctx.strokeRect(barX, barY, barW, barH);
 
-      ctx.fillStyle = '#e11d48';
+      ctx.fillStyle = this.bossRageStage > 0 ? '#f97316' : '#e11d48';
       ctx.fillRect(barX + 2, barY + 2, (barW - 4) * pct, barH - 4);
 
       ctx.font = '700 11px Orbitron, sans-serif';
       ctx.fillStyle = '#ffffff';
       ctx.textAlign = 'center';
+      const rageBadge = this.bossRageStage > 0 ? ` • 🔥 RAGE ${this.bossRageStage}/3` : '';
       const bossLabel =
         I18n.getLang() === 'tr'
-          ? `⚠️ DREADNOUGHT BOSS (DALGA ${this.currentWave}) • ${Math.ceil(activeBoss.hp)} / ${activeBoss.maxHp}`
-          : `⚠️ DREADNOUGHT BOSS (WAVE ${this.currentWave}) • ${Math.ceil(activeBoss.hp)} / ${activeBoss.maxHp}`;
-      ctx.fillText(bossLabel, w / 2, barY + 13);
+          ? `⚠️ BOSS (HP ${Math.ceil(activeBoss.hp)}/${activeBoss.maxHp})${rageBadge} • 💥 İNFİLAK: ${detLeft.toFixed(1)}sn`
+          : `⚠️ BOSS (HP ${Math.ceil(activeBoss.hp)}/${activeBoss.maxHp})${rageBadge} • 💥 DETONATION: ${detLeft.toFixed(1)}s`;
+      ctx.fillText(bossLabel, w / 2, barY + 15);
       ctx.restore();
     }
 

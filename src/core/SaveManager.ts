@@ -1,6 +1,6 @@
 import { I18n, LangCode } from './I18n';
 
-export type CommanderId = 'vanguard' | 'tesla_engineer' | 'void_phantom';
+export type CommanderId = 'vanguard' | 'valkyrie' | 'tesla_engineer' | 'void_phantom';
 
 export interface MetaUpgrades {
   damageLevel: number;
@@ -53,7 +53,7 @@ const DEFAULT_SAVE: SaveData = {
   language: 'en', // Strict English default
   playerName: 'CYBER_COMMANDER',
   selectedCommander: 'vanguard',
-  unlockedCommanders: ['vanguard'],
+  unlockedCommanders: ['vanguard', 'valkyrie'],
   gold: 150,
   gems: 25,
   techShards: 0,
@@ -88,10 +88,16 @@ export class SaveManager {
   private static instance: SaveManager;
   public data: SaveData;
   private listeners: Array<() => void> = [];
+  private saveTimeoutId: number | null = null;
+  private notifyScheduled = false;
 
   private constructor() {
     this.data = this.load();
     I18n.setLang(this.data.language || 'en');
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('beforeunload', () => this.flushSave());
+    }
   }
 
   public static getInstance(): SaveManager {
@@ -106,13 +112,17 @@ export class SaveManager {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return structuredClone(DEFAULT_SAVE);
       const parsed = JSON.parse(raw);
+      const unlocked: CommanderId[] = Array.isArray(parsed.unlockedCommanders)
+        ? parsed.unlockedCommanders
+        : ['vanguard', 'valkyrie'];
+      if (!unlocked.includes('vanguard')) unlocked.push('vanguard');
+      if (!unlocked.includes('valkyrie')) unlocked.push('valkyrie');
+
       return {
         ...structuredClone(DEFAULT_SAVE),
         ...parsed,
         language: parsed.language === 'tr' ? 'tr' : 'en',
-        unlockedCommanders: Array.isArray(parsed.unlockedCommanders)
-          ? parsed.unlockedCommanders
-          : ['vanguard'],
+        unlockedCommanders: unlocked,
         missionTiers: {
           ...DEFAULT_SAVE.missionTiers,
           ...(parsed.missionTiers || {})
@@ -128,9 +138,21 @@ export class SaveManager {
   }
 
   public save(): void {
+    this.scheduleNotify();
+    if (this.saveTimeoutId !== null) return;
+    this.saveTimeoutId = window.setTimeout(() => {
+      this.saveTimeoutId = null;
+      this.flushSave();
+    }, 250);
+  }
+
+  public flushSave(): void {
+    if (this.saveTimeoutId !== null) {
+      clearTimeout(this.saveTimeoutId);
+      this.saveTimeoutId = null;
+    }
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(this.data));
-      this.notify();
     } catch (e) {
       console.warn('Could not persist save data:', e);
     }
@@ -149,7 +171,8 @@ export class SaveManager {
   }
 
   public isCommanderUnlocked(id: CommanderId): boolean {
-    if (id === 'void_phantom' && this.data.vipUnlocked) return true;
+    if (id === 'vanguard' || id === 'valkyrie') return true;
+    if ((id === 'tesla_engineer' || id === 'void_phantom') && this.data.vipUnlocked) return true;
     return this.data.unlockedCommanders.includes(id);
   }
 
@@ -215,8 +238,13 @@ export class SaveManager {
     this.listeners.push(cb);
   }
 
-  private notify(): void {
-    for (const cb of this.listeners) cb();
+  private scheduleNotify(): void {
+    if (this.notifyScheduled) return;
+    this.notifyScheduled = true;
+    requestAnimationFrame(() => {
+      this.notifyScheduled = false;
+      for (const cb of this.listeners) cb();
+    });
   }
 
   public addGold(amount: number): void {
@@ -273,13 +301,13 @@ export class SaveManager {
   }
 
   public getDamageMultiplier(): number {
-    const cmdBonus = this.data.selectedCommander === 'tesla_engineer' ? 0.2 : 0;
+    const cmdBonus = this.data.selectedCommander === 'tesla_engineer' ? 0.25 : 0;
     const shardBonus = this.data.techShards * 0.03;
     return 1 + this.data.meta.damageLevel * 0.15 + cmdBonus + shardBonus;
   }
 
   public getBonusMaxHp(): number {
-    const cmdHp = this.data.selectedCommander === 'vanguard' ? 20 : 0;
+    const cmdHp = this.data.selectedCommander === 'vanguard' ? 25 : 0;
     return this.data.meta.maxHpLevel * 30 + cmdHp;
   }
 
@@ -298,6 +326,7 @@ export class SaveManager {
   public resetSave(): void {
     this.data = structuredClone(DEFAULT_SAVE);
     I18n.setLang('en');
-    this.save();
+    this.flushSave();
+    this.scheduleNotify();
   }
 }
