@@ -57,6 +57,16 @@ const THEME_PROFILES: Record<ConcreteArenaTheme, ThemeColorProfile> = {
   }
 };
 
+const CMD_PALETTE: Record<CommanderId, { primary: number; glow: number }> = {
+  vanguard: { primary: 0x0ea5e9, glow: 0x38bdf8 },
+  valkyrie: { primary: 0xec4899, glow: 0x22d3ee },
+  tesla_engineer: { primary: 0xa855f7, glow: 0xfacc15 },
+  void_phantom: { primary: 0xe11d48, glow: 0xf43f5e }
+};
+
+const TIER_THREE_COLORS = TIER_COLORS.map((c) => new THREE.Color(c));
+const DEFAULT_TIER_COLOR = new THREE.Color('#38bdf8');
+
 interface PodEntry {
   root: THREE.Group;
   archetypeGroups: Record<WeaponArchetypeId, THREE.Group>;
@@ -147,6 +157,8 @@ export class Renderer3D {
   private particlePool: THREE.Mesh[] = [];
   private frostPool: THREE.Mesh[] = [];
   private lightningLines: THREE.Line[] = [];
+  private lightningPool: THREE.Line[] = [];
+  private activeEnemyIds = new Set<number>();
 
   constructor(overlayCanvas: HTMLCanvasElement, worldSize: number) {
     this.worldSize = worldSize;
@@ -1035,9 +1047,10 @@ export class Renderer3D {
     };
   }
 
-  public renderScene(params: {
+  public renderScene(source: {
     player: { x: number; y: number; angle: number; invulnTimer: number };
-    equippedWeapons: Array<WeaponInstance | null>;
+    weapons?: { equipped: Array<WeaponInstance | null> };
+    equippedWeapons?: Array<WeaponInstance | null>;
     enemies: Enemy[];
     projectiles: Projectile[];
     lootDrops: LootDrop[];
@@ -1048,18 +1061,16 @@ export class Renderer3D {
     bossRageStage: number;
   }): void {
     const now = performance.now() * 0.001;
-    const {
-      player,
-      equippedWeapons,
-      enemies,
-      projectiles,
-      lootDrops,
-      frostRings,
-      lightningBolts,
-      particles,
-      screenShake,
-      bossRageStage
-    } = params;
+    const player = source.player;
+    const equippedWeapons = source.equippedWeapons || source.weapons?.equipped || [];
+    const enemies = source.enemies;
+    const projectiles = source.projectiles;
+    const lootDrops = source.lootDrops;
+    const frostRings = source.frostRings;
+    const lightningBolts = source.lightningBolts;
+    const particles = source.particles;
+    const screenShake = source.screenShake;
+    const bossRageStage = source.bossRageStage;
 
     // 1. Camera Follow + Dynamic Shadow Frustum Follow + 3D Screen Shake
     const shakeX = (Math.random() - 0.5) * screenShake * 1.4;
@@ -1102,15 +1113,9 @@ export class Renderer3D {
       this.backLight.intensity = 1.6;
     }
 
-    // 3. Update Player 3D Commander Mech
+    // 3. Update Player 3D Commander Mech (Zero-GC: uses cached palette)
     const cmd = SaveManager.getInstance().data.selectedCommander;
-    const cmdPalette: Record<CommanderId, { primary: number; glow: number }> = {
-      vanguard: { primary: 0x0ea5e9, glow: 0x38bdf8 },
-      valkyrie: { primary: 0xec4899, glow: 0x22d3ee },
-      tesla_engineer: { primary: 0xa855f7, glow: 0xfacc15 },
-      void_phantom: { primary: 0xe11d48, glow: 0xf43f5e }
-    };
-    const pal = cmdPalette[cmd] || cmdPalette.vanguard;
+    const pal = CMD_PALETTE[cmd] || CMD_PALETTE.vanguard;
     const isFlashing = player.invulnTimer > 0 && Math.floor(performance.now() / 60) % 2 === 0;
 
     this.playerChassisMat.color.setHex(isFlashing ? 0xffffff : pal.primary);
@@ -1128,7 +1133,7 @@ export class Renderer3D {
     this.playerTurretGroup.rotation.y = -player.angle;
     this.playerThrusterMesh.scale.y = 0.85 + Math.sin(now * 28) * 0.25;
 
-    // 4. Update 6 Orbiting Multi-Part Weapon Drones
+    // 4. Update 6 Orbiting Multi-Part Weapon Drones (Zero-GC: uses cached THREE.Color)
     for (let i = 0; i < 6; i++) {
       const w = equippedWeapons[i];
       const pod = this.weaponPods[i];
@@ -1155,17 +1160,17 @@ export class Renderer3D {
       pod.root.scale.setScalar(scale);
       pod.root.rotation.y = now * (w.archetype === 'sawblade' ? 12 : 3.2) + i;
 
-      const tierColor = new THREE.Color(TIER_COLORS[w.tier - 1] || '#38bdf8');
+      const tierColor = TIER_THREE_COLORS[w.tier - 1] || DEFAULT_TIER_COLOR;
       pod.primaryMat.color.copy(tierColor);
       pod.primaryMat.emissive.copy(tierColor);
       pod.glowSprite.material.color.copy(tierColor);
     }
 
-    // 5. Sync Animated Multi-Part 3D Enemies
-    const activeIds = new Set<number>();
+    // 5. Sync Animated Multi-Part 3D Enemies (Zero-GC: reuses activeEnemyIds Set)
+    this.activeEnemyIds.clear();
     for (let i = 0; i < enemies.length; i++) {
       const e = enemies[i];
-      activeIds.add(e.id);
+      this.activeEnemyIds.add(e.id);
 
       let entry = this.enemyMeshes.get(e.id);
       if (!entry) {
@@ -1242,7 +1247,7 @@ export class Renderer3D {
     }
 
     for (const [id, entry] of this.enemyMeshes.entries()) {
-      if (!activeIds.has(id)) {
+      if (!this.activeEnemyIds.has(id)) {
         this.scene.remove(entry.group);
         entry.mainMat.dispose();
         entry.accentMat.dispose();
@@ -1621,25 +1626,38 @@ export class Renderer3D {
   }
 
   private syncLightningBolts(bolts: LightningBolt[]): void {
-    for (const line of this.lightningLines) {
-      this.scene.remove(line);
-      line.geometry.dispose();
-      (line.material as THREE.Material).dispose();
-    }
-    this.lightningLines = [];
-
+    let boltIdx = 0;
     for (const b of bolts) {
       if (b.points.length < 2) continue;
-      const pts = b.points.map((pt) => new THREE.Vector3(pt.x, 22, pt.y));
-      const geo = new THREE.BufferGeometry().setFromPoints(pts);
-      const mat = new THREE.LineBasicMaterial({
-        color: b.color,
-        transparent: true,
-        opacity: Math.max(0, b.alpha)
-      });
-      const line = new THREE.Line(geo, mat);
-      this.scene.add(line);
-      this.lightningLines.push(line);
+      let line = this.lightningPool[boltIdx];
+      const positions = new Float32Array(b.points.length * 3);
+      for (let p = 0; p < b.points.length; p++) {
+        positions[p * 3] = b.points[p].x;
+        positions[p * 3 + 1] = 22;
+        positions[p * 3 + 2] = b.points[p].y;
+      }
+      if (!line) {
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        const mat = new THREE.LineBasicMaterial({
+          color: b.color,
+          transparent: true,
+          opacity: Math.max(0, b.alpha)
+        });
+        line = new THREE.Line(geo, mat);
+        this.scene.add(line);
+        this.lightningPool.push(line);
+      } else {
+        line.visible = true;
+        line.geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        const mat = line.material as THREE.LineBasicMaterial;
+        mat.color.set(b.color);
+        mat.opacity = Math.max(0, b.alpha);
+      }
+      boltIdx++;
+    }
+    for (let i = boltIdx; i < this.lightningPool.length; i++) {
+      this.lightningPool[i].visible = false;
     }
   }
 

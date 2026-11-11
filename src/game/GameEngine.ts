@@ -216,18 +216,18 @@ export class GameEngine {
   public gameSpeedMultiplier = 1;
   public tempAdSpeedWave = false;
 
-  // Entities
-  private enemies: Enemy[] = [];
-  private projectiles: Projectile[] = [];
-  private lightningBolts: LightningBolt[] = [];
-  private frostRings: FrostRing[] = [];
-  private lootDrops: LootDrop[] = [];
-  private particles: Particle[] = [];
-  private floatingTexts: FloatingText[] = [];
+  // Entities (public for zero-GC direct passing to 3D renderer)
+  public enemies: Enemy[] = [];
+  public projectiles: Projectile[] = [];
+  public lightningBolts: LightningBolt[] = [];
+  public frostRings: FrostRing[] = [];
+  public lootDrops: LootDrop[] = [];
+  public particles: Particle[] = [];
+  public floatingTexts: FloatingText[] = [];
 
   private spawnTimer = 0;
   private enemyIdCounter = 1;
-  private screenShake = 0;
+  public screenShake = 0;
   private isPausedBySdk = false;
 
   // Input State (WASD + Floating Dynamic Virtual Joystick)
@@ -1424,8 +1424,11 @@ export class GameEngine {
       this.player.hp = Math.min(this.player.maxHp, this.player.hp + Math.round(this.player.maxHp * 0.35));
       this.weapons.autoMergeAll();
 
-      // Replenish Rival Commanders up to 3 active in the arena
-      const currentRivals = this.enemies.filter((e) => e.type === 'rival').length;
+      // Replenish Rival Commanders up to 3 active in the arena (zero-GC count loop)
+      let currentRivals = 0;
+      for (let i = 0; i < this.enemies.length; i++) {
+        if (this.enemies[i].type === 'rival') currentRivals++;
+      }
       for (let r = currentRivals; r < 3; r++) {
         this.spawnRivalCommander(r);
       }
@@ -1490,19 +1493,8 @@ export class GameEngine {
   }
 
   private render(): void {
-    // 1. Render the 3D WebGL Arena Scene via Three.js
-    this.renderer3d.renderScene({
-      player: this.player,
-      equippedWeapons: this.weapons.equipped,
-      enemies: this.enemies,
-      projectiles: this.projectiles,
-      lootDrops: this.lootDrops,
-      frostRings: this.frostRings,
-      lightningBolts: this.lightningBolts,
-      particles: this.particles,
-      screenShake: this.screenShake,
-      bossRageStage: this.bossRageStage
-    });
+    // 1. Render the 3D WebGL Arena Scene via Three.js (Zero-GC: passes this directly instead of per-frame object literal)
+    this.renderer3d.renderScene(this);
 
     // 2. Render Crisp 2D Screen-Space HUD Overlay (Health bars, Floating Damage, Boss Banner, Virtual Joystick)
     const ctx = this.ctx;
