@@ -451,6 +451,66 @@ export class GameEngine {
 
     this.state = 'PLAYING';
     this.onHudUpdate?.();
+    this.persistSoloCheckpoint(waveNum);
+  }
+
+  private persistSoloCheckpoint(nextWave: number): void {
+    if (this.gameMode !== 'SOLO') return;
+    const snap = (w: WeaponInstance | null) => (w ? { archetype: w.archetype as string, tier: w.tier } : null);
+    SaveManager.getInstance().saveSoloRun({
+      wave: nextWave,
+      commander: SaveManager.getInstance().data.selectedCommander,
+      equipped: this.weapons.equipped.map(snap),
+      bench: this.weapons.bench.map(snap),
+      runBuffs: { ...this.runBuffs },
+      player: {
+        level: this.player.level,
+        xp: this.player.xp,
+        xpToNext: this.player.xpToNext,
+        maxHp: this.player.maxHp
+      },
+      runGoldEarned: this.runGoldEarned,
+      runKills: this.runKills,
+      runScore: this.runScore,
+      revivedThisRun: this.revivedThisRun
+    });
+  }
+
+  /** Called when leaving to the main menu so Solo progress (wave, weapons, buffs, level) is remembered. */
+  public saveCheckpointOnExit(): void {
+    if (this.gameMode !== 'SOLO') return;
+    const next = this.state === 'SHOP' ? this.currentWave + 1 : this.currentWave;
+    this.persistSoloCheckpoint(next);
+  }
+
+  /** Restores the saved Solo run (wave, weapons, buffs, level) instead of starting from wave 1. */
+  public resumeSoloRun(): boolean {
+    const save = SaveManager.getInstance();
+    const snap = save.data.soloRun;
+    if (!snap) return false;
+
+    this.gameMode = 'SOLO';
+    save.data.selectedCommander = snap.commander;
+
+    const rebuild = (s: { archetype: string; tier: number } | null) =>
+      s ? this.weapons.createWeapon(s.archetype as WeaponArchetypeId, s.tier) : null;
+    this.weapons.equipped = snap.equipped.map(rebuild);
+    this.weapons.bench = snap.bench.map(rebuild);
+    while (this.weapons.equipped.length < WeaponSystem.MAX_EQUIPPED) this.weapons.equipped.push(null);
+    while (this.weapons.bench.length < WeaponSystem.MAX_BENCH) this.weapons.bench.push(null);
+
+    this.runBuffs = { ...snap.runBuffs };
+    this.player.level = snap.player.level;
+    this.player.xp = snap.player.xp;
+    this.player.xpToNext = snap.player.xpToNext;
+    this.player.maxHp = snap.player.maxHp;
+    this.runGoldEarned = snap.runGoldEarned;
+    this.runKills = snap.runKills;
+    this.runScore = snap.runScore;
+    this.revivedThisRun = snap.revivedThisRun;
+
+    this.startWave(snap.wave);
+    return true;
   }
 
   public revivePlayerWithNuke(): void {
@@ -1379,6 +1439,7 @@ export class GameEngine {
     }
 
     this.state = 'SHOP';
+    this.persistSoloCheckpoint(this.currentWave + 1);
     this.onWaveComplete?.();
   }
 

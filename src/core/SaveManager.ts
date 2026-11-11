@@ -23,11 +23,32 @@ export interface CrateLootResult {
   techShards: number;
 }
 
+export interface SoloRunSnapshot {
+  wave: number;
+  commander: CommanderId;
+  equipped: Array<{ archetype: string; tier: number } | null>;
+  bench: Array<{ archetype: string; tier: number } | null>;
+  runBuffs: {
+    damageMult: number;
+    attackSpeedMult: number;
+    critChance: number;
+    goldMult: number;
+    magnetMult: number;
+    moveSpeedMult: number;
+  };
+  player: { level: number; xp: number; xpToNext: number; maxHp: number };
+  runGoldEarned: number;
+  runKills: number;
+  runScore: number;
+  revivedThisRun: boolean;
+}
+
 export interface SaveData {
   language: LangCode;
   playerName: string;
   selectedCommander: CommanderId;
   unlockedCommanders: CommanderId[];
+  soloRun: SoloRunSnapshot | null;
   gold: number;
   gems: number;
   techShards: number;
@@ -56,6 +77,7 @@ const DEFAULT_SAVE: SaveData = {
   playerName: 'CYBER_COMMANDER',
   selectedCommander: 'vanguard',
   unlockedCommanders: ['vanguard', 'valkyrie'],
+  soloRun: null,
   gold: 150,
   gems: 25,
   techShards: 0,
@@ -201,6 +223,20 @@ export class SaveManager {
   public recordLevelUp(count = 1): void {
     this.data.totalLevelUps += count;
     this.save();
+  }
+
+  public saveSoloRun(snapshot: SoloRunSnapshot): void {
+    this.data.soloRun = snapshot;
+    this.save();
+  }
+
+  public clearSoloRun(): void {
+    this.data.soloRun = null;
+    this.save();
+  }
+
+  public hasResumableSoloRun(): boolean {
+    return !!this.data.soloRun && this.data.soloRun.wave >= 2;
   }
 
   public recordRunStats(waveReached: number, scoreReached: number): void {

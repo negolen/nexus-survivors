@@ -189,6 +189,7 @@ export class UIManager {
     document.getElementById('btn-hud-home')?.addEventListener('click', () => {
       AudioManager.getInstance().playClick();
       SaveManager.getInstance().recordRunStats(this.engine.currentWave, this.engine.runScore);
+      this.engine.saveCheckpointOnExit();
       this.engine.state = 'MENU';
       this.renderMainMenu();
     });
@@ -363,7 +364,12 @@ export class UIManager {
           </div>
 
           <div class="menu-actions">
-            <button id="btn-start-run" class="btn-primary btn-xl pulse-glow">${I18n.t('btn_start_run')}</button>
+            ${
+              save.hasResumableSoloRun()
+                ? `<button id="btn-continue-run" class="btn-gold btn-xl pulse-glow">${I18n.t('btn_continue_run', { wave: d.soloRun!.wave })}</button>`
+                : ''
+            }
+            <button id="btn-start-run" class="btn-primary btn-xl ${save.hasResumableSoloRun() ? '' : 'pulse-glow'}">${save.hasResumableSoloRun() ? I18n.t('btn_new_run') : I18n.t('btn_start_run')}</button>
             <button id="btn-start-pvp" class="btn-ad btn-xl pulse-glow">${I18n.t('btn_start_pvp')}</button>
             <button id="btn-free-gold-ad" class="btn-ad">${I18n.t('btn_free_gold_ad')}</button>
             <button id="btn-menu-crates" class="btn-gold">🎁 ${I18n.t('hud_crates_btn')}</button>
@@ -388,7 +394,21 @@ export class UIManager {
       this.renderMainMenu();
     });
 
+    document.getElementById('btn-continue-run')?.addEventListener('click', () => {
+      AudioManager.getInstance().playClick();
+      this.resetToInGameHud();
+      if (!this.engine.resumeSoloRun()) {
+        this.engine.startNewRun('SOLO');
+      }
+    });
+
     document.getElementById('btn-start-run')?.addEventListener('click', () => {
+      if (save.hasResumableSoloRun()) {
+        const msg = isTr
+          ? `Kayıtlı Solo ilerlemen (Dalga ${d.soloRun!.wave}) silinip yeni oyun başlayacak. Emin misin?`
+          : `Your saved Solo progress (Wave ${d.soloRun!.wave}) will be replaced by a new run. Continue?`;
+        if (!window.confirm(msg)) return;
+      }
       AudioManager.getInstance().playClick();
       this.resetToInGameHud();
       this.engine.startNewRun('SOLO');
@@ -841,6 +861,7 @@ export class UIManager {
     });
 
     document.getElementById('btn-Menu-return')?.addEventListener('click', () => {
+      this.engine.saveCheckpointOnExit();
       this.engine.state = 'MENU';
       this.renderMainMenu();
     });
