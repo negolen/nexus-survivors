@@ -323,10 +323,10 @@ export class UIManager {
           <div class="workshop-section">
             <h3>${I18n.t('commanders_title')}</h3>
             <div class="commanders-grid">
-              ${this.renderCommanderCard('vanguard', '🤖', I18n.t('cmd_vanguard_name'), I18n.t('cmd_vanguard_role'), I18n.t('cmd_vanguard_desc'), '#0ea5e9', false, 0)}
-              ${this.renderCommanderCard('valkyrie', '🪽', I18n.t('cmd_valkyrie_name'), I18n.t('cmd_valkyrie_role'), I18n.t('cmd_valkyrie_desc'), '#ec4899', false, 0)}
-              ${this.renderCommanderCard('tesla_engineer', '🌩️', I18n.t('cmd_tesla_name'), I18n.t('cmd_tesla_role'), I18n.t('cmd_tesla_desc'), '#a855f7', true, 180)}
-              ${this.renderCommanderCard('void_phantom', '🥷', I18n.t('cmd_phantom_name'), I18n.t('cmd_phantom_role'), I18n.t('cmd_phantom_desc'), '#f43f5e', true, 250)}
+              ${this.renderCommanderCard('vanguard', './assets/cmd-rex.jpg', '🤖', I18n.t('cmd_vanguard_name'), I18n.t('cmd_vanguard_role'), I18n.t('cmd_vanguard_desc'), '#0ea5e9', false, 0)}
+              ${this.renderCommanderCard('valkyrie', './assets/cmd-aria.jpg', '🪽', I18n.t('cmd_valkyrie_name'), I18n.t('cmd_valkyrie_role'), I18n.t('cmd_valkyrie_desc'), '#ec4899', false, 0)}
+              ${this.renderCommanderCard('tesla_engineer', './assets/cmd-volt.jpg', '🌩️', I18n.t('cmd_tesla_name'), I18n.t('cmd_tesla_role'), I18n.t('cmd_tesla_desc'), '#a855f7', true, 180)}
+              ${this.renderCommanderCard('void_phantom', './assets/cmd-nyx.jpg', '🥷', I18n.t('cmd_phantom_name'), I18n.t('cmd_phantom_role'), I18n.t('cmd_phantom_desc'), '#f43f5e', true, 250)}
             </div>
           </div>
 
@@ -434,6 +434,7 @@ export class UIManager {
 
   private renderCommanderCard(
     id: CommanderId,
+    portraitUrl: string,
     icon: string,
     name: string,
     roleBadge: string,
@@ -465,7 +466,10 @@ export class UIManager {
     return `
       <div class="commander-card ${isSelected ? 'cmd-active' : ''}" style="border-color: ${isSelected ? color : 'rgba(148,163,184,0.25)'}">
         <div class="cmd-top">
-          <span class="cmd-icon" style="background: ${color}22; border-color: ${color}">${icon}</span>
+          <div class="cmd-portrait-wrap" style="background: ${color}22; border-color: ${color}">
+            <img class="cmd-portrait-img" src="${portraitUrl}" alt="${name}" onerror="this.style.display='none'" />
+            <span class="cmd-fallback-icon">${icon}</span>
+          </div>
           <div>
             <span class="lvl-tag" style="margin-left:0; color: ${isVipCommander ? '#facc15' : '#38bdf8'}">${roleBadge}</span>
             <h4>${name}</h4>
