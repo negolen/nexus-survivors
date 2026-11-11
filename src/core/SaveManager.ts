@@ -312,12 +312,18 @@ export class SaveManager {
     this.save();
   }
 
+  public getMaxUpgradeLevelCap(): number {
+    return Math.max(1, this.data.highestWave);
+  }
+
   public getMetaUpgradeCost(key: keyof MetaUpgrades): number {
     const lvl = this.data.meta[key];
     return Math.floor(100 * Math.pow(1.55, lvl));
   }
 
   public buyMetaUpgrade(key: keyof MetaUpgrades): boolean {
+    const maxCap = this.getMaxUpgradeLevelCap();
+    if (this.data.meta[key] >= maxCap) return false;
     const cost = this.getMetaUpgradeCost(key);
     if (!this.spendGold(cost)) return false;
     this.data.meta[key] += 1;

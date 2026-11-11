@@ -1162,11 +1162,27 @@ export class GameEngine {
     }
   }
 
+  private getArenaCornerPosition(cornerIdx: number, jitter = 65): { x: number; y: number } {
+    const pad = 95;
+    const corners = [
+      { x: pad, y: pad },
+      { x: this.worldSize - pad, y: pad },
+      { x: this.worldSize - pad, y: this.worldSize - pad },
+      { x: pad, y: this.worldSize - pad }
+    ];
+    const base = corners[Math.abs(cornerIdx) % 4];
+    const jx = (Math.random() - 0.5) * jitter;
+    const jy = (Math.random() - 0.5) * jitter;
+    return {
+      x: Math.max(55, Math.min(this.worldSize - 55, base.x + jx)),
+      y: Math.max(55, Math.min(this.worldSize - 55, base.y + jy))
+    };
+  }
+
   private spawnEnemy(type: EnemyType): void {
-    const angle = Math.random() * Math.PI * 2;
-    const spawnDist = 560 + Math.random() * 160;
-    const x = Math.max(50, Math.min(this.worldSize - 50, this.player.x + Math.cos(angle) * spawnDist));
-    const y = Math.max(50, Math.min(this.worldSize - 50, this.player.y + Math.sin(angle) * spawnDist));
+    // Spawn incoming enemies from the 4 Arena Corner Portals!
+    const cornerIdx = Math.floor(Math.random() * 4);
+    const { x, y } = this.getArenaCornerPosition(cornerIdx, 80);
 
     const waveScale = Math.pow(1.24, this.currentWave - 1);
 
@@ -1265,10 +1281,8 @@ export class GameEngine {
 
     const rivalClass = classes[(this.currentWave + slotIdx) % classes.length];
     const rivalName = callsigns[(this.currentWave * 3 + slotIdx) % callsigns.length];
-    const angle = (slotIdx / 3) * Math.PI * 2 + 0.5;
-    const dist = 480;
-    const x = Math.max(80, Math.min(this.worldSize - 80, this.player.x + Math.cos(angle) * dist));
-    const y = Math.max(80, Math.min(this.worldSize - 80, this.player.y + Math.sin(angle) * dist));
+    // Spawn the 3 Rival Commanders from 3 of the 4 Arena Corner Portals (Corners 0, 1, 2)!
+    const { x, y } = this.getArenaCornerPosition(slotIdx % 4, 30);
 
     const save = SaveManager.getInstance();
     const trophyTier = Math.max(0, Math.floor(((save.data.pvpTrophies || 1000) - 1000) / 120));

@@ -23,8 +23,38 @@ export interface WeaponBlueprint {
   color: string;
 }
 
-export const TIER_NAMES = ['Common', 'Uncommon', 'Rare', 'Epic', 'Legendary'];
-export const TIER_COLORS = ['#94a3b8', '#22c55e', '#3b82f6', '#a855f7', '#f59e0b'];
+export const TIER_NAMES = [
+  'Common',
+  'Uncommon',
+  'Rare',
+  'Epic',
+  'Legendary',
+  'Mythic',
+  'Celestial',
+  'Immortal',
+  'Transcendent',
+  'Omega'
+];
+export const TIER_COLORS = [
+  '#94a3b8',
+  '#22c55e',
+  '#3b82f6',
+  '#a855f7',
+  '#f59e0b',
+  '#ef4444',
+  '#06b6d4',
+  '#ec4899',
+  '#fde047',
+  '#ffffff'
+];
+
+export function getTierName(tier: number): string {
+  return TIER_NAMES[Math.min(TIER_NAMES.length - 1, Math.max(0, tier - 1))] || `Tier ${tier}`;
+}
+
+export function getTierColor(tier: number): string {
+  return TIER_COLORS[Math.min(TIER_COLORS.length - 1, Math.max(0, tier - 1))] || '#f59e0b';
+}
 
 export const WEAPON_BLUEPRINTS: Record<WeaponArchetypeId, WeaponBlueprint> = {
   plasma: {
@@ -103,11 +133,16 @@ export class WeaponSystem {
     this.equipped[1] = this.createWeapon('plasma', 1);
   }
 
+  public static getMaxAllowedTier(): number {
+    return Math.max(1, SaveManager.getInstance().data.highestWave);
+  }
+
   public createWeapon(archetype: WeaponArchetypeId, tier = 1): WeaponInstance {
+    const maxTier = WeaponSystem.getMaxAllowedTier();
     return {
       uid: `wpn_${this.uidCounter++}_${Date.now()}`,
       archetype,
-      tier: Math.max(1, Math.min(5, tier)),
+      tier: Math.max(1, Math.min(maxTier, tier)),
       cooldownTimer: 0,
       orbitAngle: 0
     };
@@ -166,8 +201,9 @@ export class WeaponSystem {
 
     if (!itemA) return { action: 'none' };
 
-    // Check if identical archetype & tier (< 5) -> MERGE!
-    if (itemB && itemA.archetype === itemB.archetype && itemA.tier === itemB.tier && itemA.tier < 5) {
+    const maxTier = WeaponSystem.getMaxAllowedTier();
+    // Check if identical archetype & tier (< maxTier based on Highest Solo Wave) -> MERGE!
+    if (itemB && itemA.archetype === itemB.archetype && itemA.tier === itemB.tier && itemA.tier < maxTier) {
       const upgraded = this.createWeapon(itemA.archetype, itemA.tier + 1);
       targetList[toIndex] = upgraded;
       sourceList[fromIndex] = null;
@@ -197,9 +233,10 @@ export class WeaponSystem {
       this.equipped.forEach((item, index) => allSlots.push({ group: 'equipped', index, item }));
       this.bench.forEach((item, index) => allSlots.push({ group: 'bench', index, item }));
 
+      const maxTier = WeaponSystem.getMaxAllowedTier();
       for (let i = 0; i < allSlots.length; i++) {
         const a = allSlots[i];
-        if (!a.item || a.item.tier >= 5) continue;
+        if (!a.item || a.item.tier >= maxTier) continue;
 
         for (let j = i + 1; j < allSlots.length; j++) {
           const b = allSlots[j];

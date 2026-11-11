@@ -117,8 +117,8 @@ export class Renderer3D {
 
     // 2. Scene, Studio PBR Environment Reflection Cubemap (PMREM + RoomEnvironment) & Fog
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x03060f);
-    this.scene.fog = new THREE.FogExp2(0x03060f, 0.0003);
+    this.scene.background = this.createNebulaSkyTexture();
+    this.scene.fog = new THREE.FogExp2(0x1a1f4a, 0.00022);
 
     const pmremGenerator = new THREE.PMREMGenerator(this.renderer);
     pmremGenerator.compileEquirectangularShader();
@@ -214,25 +214,90 @@ export class Renderer3D {
     canvas.height = 512;
     const ctx = canvas.getContext('2d')!;
 
-    ctx.fillStyle = '#141e30';
+    ctx.fillStyle = '#1b2b4a';
     ctx.fillRect(0, 0, 512, 512);
 
-    // Brushed metallic tech plate grid + diagonal vents
-    ctx.strokeStyle = '#2c3e55';
-    ctx.lineWidth = 4;
+    // Brighter metallic tech plates with glowing neon circuit seams
     const step = 64;
-    for (let x = 0; x <= 512; x += step) {
-      for (let y = 0; y <= 512; y += step) {
-        ctx.strokeRect(x + 2, y + 2, step - 4, step - 4);
-        ctx.fillStyle = (x + y) % 128 === 0 ? '#1a2639' : '#111927';
-        ctx.fillRect(x + 6, y + 6, step - 12, step - 12);
+    for (let x = 0; x < 512; x += step) {
+      for (let y = 0; y < 512; y += step) {
+        ctx.fillStyle = (x / step + y / step) % 2 === 0 ? '#27406b' : '#1e3358';
+        ctx.fillRect(x + 4, y + 4, step - 8, step - 8);
       }
     }
+    ctx.shadowColor = '#38bdf8';
+    ctx.shadowBlur = 8;
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 2.5;
+    for (let i = 0; i <= 512; i += step * 2) {
+      ctx.beginPath();
+      ctx.moveTo(i, 0);
+      ctx.lineTo(i, 512);
+      ctx.moveTo(0, i);
+      ctx.lineTo(512, i);
+      ctx.stroke();
+    }
+    ctx.shadowColor = '#a855f7';
+    ctx.strokeStyle = '#a855f7';
+    ctx.lineWidth = 2;
+    for (let x = 0; x < 512; x += step * 2) {
+      for (let y = 0; y < 512; y += step * 2) {
+        ctx.beginPath();
+        ctx.moveTo(x + 14, y + 14);
+        ctx.lineTo(x + 50, y + 14);
+        ctx.lineTo(x + 50, y + 50);
+        ctx.stroke();
+        ctx.fillStyle = '#facc15';
+        ctx.beginPath();
+        ctx.arc(x + 14, y + 14, 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    ctx.shadowBlur = 0;
 
     const tex = new THREE.CanvasTexture(canvas);
     tex.wrapS = THREE.RepeatWrapping;
     tex.wrapT = THREE.RepeatWrapping;
     tex.repeat.set(28, 28);
+    return tex;
+  }
+
+  private createNebulaSkyTexture(): THREE.CanvasTexture {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1024;
+    canvas.height = 1024;
+    const ctx = canvas.getContext('2d')!;
+
+    const grad = ctx.createLinearGradient(0, 0, 0, 1024);
+    grad.addColorStop(0, '#0b0f3a');
+    grad.addColorStop(0.45, '#3b1a6e');
+    grad.addColorStop(0.75, '#a3318f');
+    grad.addColorStop(1, '#ff7a59');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 1024, 1024);
+
+    const blobs: Array<[number, number, number, string]> = [
+      [220, 300, 260, 'rgba(56,189,248,0.35)'],
+      [760, 220, 300, 'rgba(168,85,247,0.38)'],
+      [520, 620, 340, 'rgba(236,72,153,0.28)'],
+      [860, 700, 240, 'rgba(34,211,238,0.25)']
+    ];
+    for (const [bx, by, br, col] of blobs) {
+      const g = ctx.createRadialGradient(bx, by, 10, bx, by, br);
+      g.addColorStop(0, col);
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, 1024, 1024);
+    }
+    ctx.fillStyle = '#ffffff';
+    for (let i = 0; i < 260; i++) {
+      ctx.globalAlpha = 0.3 + Math.random() * 0.7;
+      ctx.fillRect(Math.random() * 1024, Math.random() * 700, 1.6, 1.6);
+    }
+    ctx.globalAlpha = 1;
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
     return tex;
   }
 
@@ -294,14 +359,17 @@ export class Renderer3D {
     const floorGeo = new THREE.PlaneGeometry(this.worldSize + 2400, this.worldSize + 2400);
     floorGeo.rotateX(-Math.PI / 2);
     const floorMat = new THREE.MeshPhysicalMaterial({
-      color: 0x0b1324,
+      color: 0xb8c8ff,
       map: this.floorHexTex,
       bumpMap: this.floorHexTex,
-      bumpScale: 1.6,
-      metalness: 0.84,
-      roughness: 0.26,
-      clearcoat: 0.45,
-      clearcoatRoughness: 0.2
+      bumpScale: 1.2,
+      emissive: 0x16305e,
+      emissiveMap: this.floorHexTex,
+      emissiveIntensity: 0.55,
+      metalness: 0.55,
+      roughness: 0.38,
+      clearcoat: 0.4,
+      clearcoatRoughness: 0.25
     });
     const floorMesh = new THREE.Mesh(floorGeo, floorMat);
     floorMesh.position.set(half, -0.5, half);
@@ -389,6 +457,54 @@ export class Renderer3D {
       pRing.position.set(cx, 105, cz);
       this.scene.add(pRing);
       this.pylonRings.push(pRing);
+    }
+
+    // 4b. Corner Spawn Portals (enemies & rival commanders enter from here)
+    const portalColors = [0xf43f5e, 0xf59e0b, 0xa855f7, 0x22d3ee];
+    const portalPad = 95;
+    const portalSpots = [
+      [portalPad, portalPad],
+      [this.worldSize - portalPad, portalPad],
+      [this.worldSize - portalPad, this.worldSize - portalPad],
+      [portalPad, this.worldSize - portalPad]
+    ];
+    portalSpots.forEach(([px, pz], idx) => {
+      const col = portalColors[idx];
+      const ringGeo = new THREE.RingGeometry(38, 48, 40);
+      ringGeo.rotateX(-Math.PI / 2);
+      const ring = new THREE.Mesh(
+        ringGeo,
+        new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.85, side: THREE.DoubleSide })
+      );
+      ring.position.set(px, 1.4, pz);
+      this.scene.add(ring);
+      this.reactorRings.push(ring);
+
+      const beam = new THREE.Mesh(
+        new THREE.CylinderGeometry(30, 30, 160, 20, 1, true),
+        new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.18, side: THREE.DoubleSide })
+      );
+      beam.position.set(px, 80, pz);
+      this.scene.add(beam);
+    });
+
+    // 4c. Glowing holo-crystal clusters scattered across the arena floor (breaks the empty void)
+    const crystalGeo = new THREE.OctahedronGeometry(1, 0);
+    const crystalCols = [0x38bdf8, 0xa855f7, 0xec4899, 0x22d3ee];
+    for (let i = 0; i < 22; i++) {
+      const a = (i / 22) * Math.PI * 2 + (i % 3) * 0.4;
+      const r = 260 + ((i * 97) % 700);
+      const cx = Math.max(160, Math.min(this.worldSize - 160, half + Math.cos(a) * r));
+      const cz = Math.max(160, Math.min(this.worldSize - 160, half + Math.sin(a) * r));
+      const s = 10 + (i % 4) * 5;
+      const crystal = new THREE.Mesh(
+        crystalGeo,
+        new THREE.MeshBasicMaterial({ color: crystalCols[i % 4], transparent: true, opacity: 0.85 })
+      );
+      crystal.scale.set(s, s * 2.3, s);
+      crystal.position.set(cx, s * 1.4, cz);
+      this.scene.add(crystal);
+      this.holoSkyscraperRings.push(crystal);
     }
 
     // 5. 24 Distant Cyber-Skyscraper Monoliths around the Arena Perimeter

@@ -344,9 +344,15 @@ export class UIManager {
           </div>
 
           <div class="workshop-section">
-            <h3>${isTr ? `⚡ KALICI KOMUTAN GÜÇLENDİRME LABORATUVARI (PVE & PVP ORTAK GÜÇ SV.${save.getCommanderPowerLevel()})` : `⚡ PERMANENT COMMANDER UPGRADE LAB (SHARED PVE & PVP POWER LVL.${save.getCommanderPowerLevel()})`}</h3>
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
+              <h3 style="margin:0;">${isTr ? `⚡ KALICI KOMUTAN GÜÇLENDİRME (MAKS SEVİYE SINIRI: SOLO DALGA ${save.getMaxUpgradeLevelCap()})` : `⚡ PERMANENT COMMANDER UPGRADES (MAX LEVEL CAP: SOLO WAVE ${save.getMaxUpgradeLevelCap()})`}</h3>
+              <div style="display:flex; gap:10px; align-items:center; background:rgba(15,23,42,0.9); border:1.5px solid #facc15; padding:6px 14px; border-radius:999px;">
+                <span style="color:#facc15; font-weight:800; font-family:'Orbitron',sans-serif; font-size:0.95rem;">🪙 ${d.gold.toLocaleString()} ${isTr ? 'ALTIN' : 'GOLD'}</span>
+                <span style="color:#38bdf8; font-weight:800; font-family:'Orbitron',sans-serif; font-size:0.95rem;">💎 ${d.gems.toLocaleString()} ${isTr ? 'ELMAS' : 'GEMS'}</span>
+              </div>
+            </div>
             <p style="font-size:0.85rem; color:#94a3b8; margin-bottom:10px;">
-              ${isTr ? 'Solo (PvE) ve PvP modlarında kazandığınız Altın 🪙 ve Elmasları 💎 burada harcayarak komutanınızı kalıcı olarak güçlendirin ve daha yüksek seviyeli PvP rakiplerini ezin!' : 'Spend Gold 🪙 and Gems 💎 earned in Solo (PvE) & PvP modes to permanently upgrade your Commander and dominate higher-level PvP Rivals!'}
+              ${isTr ? `Solo (PvE) modda ulaştığınız en yüksek dalga (${d.highestWave}) aynı zamanda geliştirmelerin ve silah birleştirmenin maksimum seviye sınırıdır!` : `Your Highest Solo Wave (${d.highestWave}) sets the maximum level cap for both permanent upgrades and weapon merging!`}
             </p>
             <div class="meta-upgrades-grid">
               ${this.renderMetaUpgradeCard('damageLevel', I18n.t('meta_dmg_title'), I18n.t('meta_dmg_desc'))}
@@ -510,17 +516,27 @@ export class UIManager {
   private renderMetaUpgradeCard(key: keyof MetaUpgrades, title: string, desc: string): string {
     const save = SaveManager.getInstance();
     const lvl = save.data.meta[key];
+    const maxCap = save.getMaxUpgradeLevelCap();
+    const isCapped = lvl >= maxCap;
     const cost = save.getMetaUpgradeCost(key);
-    const canAfford = save.data.gold >= cost;
+    const canAfford = !isCapped && save.data.gold >= cost;
+    const isTr = save.data.language === 'tr';
 
     return `
-      <div class="meta-card">
+      <div class="meta-card" style="border-color: ${isCapped ? 'rgba(250,204,21,0.45)' : 'rgba(56,189,248,0.28)'}">
         <div class="meta-info">
-          <h4>${title} <span class="lvl-tag">Lv.${lvl}</span></h4>
+          <h4>${title} <span class="lvl-tag">Lv.${lvl} / Max ${maxCap}</span></h4>
           <p>${desc}</p>
+          ${
+            isCapped
+              ? `<small style="color:#facc15; display:block; margin-top:3px; font-weight:700;">${
+                  isTr ? `🔒 Maks Sınır (Solo Dalga ${maxCap + 1}'e ulaşarak artır)` : `🔒 Cap Reached (Reach Solo Wave ${maxCap + 1} to raise)`
+                }</small>`
+              : ''
+          }
         </div>
         <button data-meta-buy="${key}" class="btn-buy ${canAfford ? '' : 'disabled'}" ${canAfford ? '' : 'disabled'}>
-          🪙 ${cost}
+          ${isCapped ? (isTr ? `MAKS (${maxCap})` : `MAX (${maxCap})`) : `🪙 ${cost.toLocaleString()}`}
         </button>
       </div>
     `;
@@ -631,14 +647,15 @@ export class UIManager {
         `;
       }
       const bp = WEAPON_BLUEPRINTS[w.archetype];
-      const tierColor = TIER_COLORS[w.tier - 1];
+      const tierColor = TIER_COLORS[Math.min(TIER_COLORS.length - 1, w.tier - 1)];
+      const tierName = TIER_NAMES[Math.min(TIER_NAMES.length - 1, w.tier - 1)] || `Tier ${w.tier}`;
       const dmg = Math.round(bp.baseDamage * Math.pow(2.15, w.tier - 1) * dmgMult);
 
       return `
         <div class="weapon-slot filled-slot ${isSelected ? 'selected-slot' : ''}"
              style="border-color: ${tierColor}; box-shadow: 0 0 12px ${tierColor}33"
              data-slot-group="${group}" data-slot-idx="${idx}">
-          <div class="slot-tier-badge" style="background: ${tierColor}">T${w.tier} ${TIER_NAMES[w.tier - 1]}</div>
+          <div class="slot-tier-badge" style="background: ${tierColor}">T${w.tier} ${tierName}</div>
           <div class="slot-icon">${bp.icon}</div>
           <div class="slot-name">${bp.name}</div>
           <div class="slot-dmg">⚔️ ${dmg} DMG</div>
@@ -647,6 +664,9 @@ export class UIManager {
       `;
     };
 
+    const maxTierCap = save.getMaxUpgradeLevelCap();
+    const isTr = save.data.language === 'tr';
+
     this.uiLayer.innerHTML = `
       ${this.renderTopHud()}
       <div class="modal-backdrop">
@@ -654,9 +674,13 @@ export class UIManager {
           <div class="workshop-header">
             <div>
               <h2>${I18n.t('workshop_title', { wave: this.engine.currentWave })}</h2>
-              <p>${I18n.t('workshop_sub')}</p>
+              <p>${I18n.t('workshop_sub')} <strong style="color:#facc15;">(${isTr ? `Maks Silah Seviyesi: T${maxTierCap}` : `Max Weapon Tier Cap: T${maxTierCap}`})</strong></p>
             </div>
-            <div class="workshop-header-btns">
+            <div class="workshop-header-btns" style="align-items:center;">
+              <div style="display:flex; gap:10px; align-items:center; background:rgba(15,23,42,0.95); border:2px solid #facc15; padding:6px 14px; border-radius:999px;">
+                <span style="color:#facc15; font-weight:800; font-family:'Orbitron',sans-serif; font-size:1rem;">🪙 ${save.data.gold.toLocaleString()}</span>
+                <span style="color:#38bdf8; font-weight:800; font-family:'Orbitron',sans-serif; font-size:0.95rem;">💎 ${save.data.gems.toLocaleString()}</span>
+              </div>
               <button id="btn-auto-merge" class="btn-gold">${I18n.t('btn_auto_merge')}</button>
               ${
                 !this.waveBonusDoubled
