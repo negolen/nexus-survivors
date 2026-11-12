@@ -266,6 +266,27 @@ export class SaveManager {
     this.data.pvpTrophies = Math.max(0, Math.floor((this.data.pvpTrophies || 1000) + delta));
     this.data.pvpRivalsEliminated = (this.data.pvpRivalsEliminated || 0) + rivalsKilled;
     this.save();
+    this.scheduleNotify();
+  }
+
+  public applyPvpMatchOutcome(_rank: number, trophyDelta: number, rivalsKilled: number): void {
+    this.data.pvpTrophies = Math.max(0, Math.floor((this.data.pvpTrophies || 1000) + trophyDelta));
+    this.data.pvpRivalsEliminated = (this.data.pvpRivalsEliminated || 0) + rivalsKilled;
+    this.save();
+    this.scheduleNotify();
+  }
+
+  public applyPvpTrophyShield(lossAmount: number): void {
+    if (lossAmount <= 0) return;
+    this.data.pvpTrophies = Math.max(0, Math.floor((this.data.pvpTrophies || 1000) + lossAmount));
+    this.save();
+    this.scheduleNotify();
+  }
+
+  public addTechShards(amount: number): void {
+    this.data.techShards = Math.max(0, Math.floor((this.data.techShards || 0) + amount));
+    this.save();
+    this.scheduleNotify();
   }
 
   public rollSupplyCrate(rollsCount: number, isPremium: boolean): CrateLootResult {
@@ -373,6 +394,63 @@ export class SaveManager {
     this.data.meta[key] += 1;
     this.save();
     return true;
+  }
+
+  /** Calculates the maximum levels affordable with current gold up to the Solo wave cap. */
+  public getMaxAffordableMeta(key: keyof MetaUpgrades): { levels: number; cost: number; targetLevel: number } {
+    const maxCap = this.getMaxUpgradeLevelCap();
+    const current = this.data.meta[key];
+    let levels = 0;
+    let cost = 0;
+    let goldLeft = this.data.gold;
+
+    while (current + levels < maxCap) {
+      const nextCost = Math.floor(100 * Math.pow(1.55, current + levels));
+      if (goldLeft >= nextCost) {
+        goldLeft -= nextCost;
+        cost += nextCost;
+        levels++;
+      } else {
+        break;
+      }
+    }
+    return { levels, cost, targetLevel: current + levels };
+  }
+
+  /** Upgrades the meta attribute to the maximum affordable level right now. */
+  public buyMaxMetaUpgrade(key: keyof MetaUpgrades): number {
+    const { levels, cost } = this.getMaxAffordableMeta(key);
+    if (levels <= 0) return 0;
+    if (!this.spendGold(cost)) return 0;
+    this.data.meta[key] += levels;
+    this.save();
+    return levels;
+  }
+
+  /** Upgrades ALL meta attributes to their maximum affordable levels! */
+  public buyAllMaxMetaUpgrades(): { totalLevels: number; totalCost: number } {
+    const keys: Array<keyof MetaUpgrades> = ['damageLevel', 'maxHpLevel', 'attackSpeedLevel', 'startingGoldLevel'];
+    let totalLevels = 0;
+    let totalCost = 0;
+
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const k of keys) {
+        const maxCap = this.getMaxUpgradeLevelCap();
+        if (this.data.meta[k] < maxCap) {
+          const c = this.getMetaUpgradeCost(k);
+          if (this.spendGold(c)) {
+            this.data.meta[k]++;
+            totalLevels++;
+            totalCost += c;
+            changed = true;
+          }
+        }
+      }
+    }
+    if (totalLevels > 0) this.save();
+    return { totalLevels, totalCost };
   }
 
   public getDamageMultiplier(): number {

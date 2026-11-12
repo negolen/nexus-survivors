@@ -100,6 +100,44 @@ const T: Record<string, [string, string]> = {
   btn_revive_ad: ['🎬 Watch Ad to REVIVE (100% HP + Tactical Nuke)', '🎬 Reklam İzle ve DİRİL (%100 Can + Nükleer Dalga)'],
   btn_claim_end_ad: ['🎬 Watch Ad: Claim +{gold} Bonus Gold & Exit', '🎬 Reklam İzle: +{gold} Bonus Altın Al & Çık'],
   btn_return_hub: ['Return to Upgrade Hub', 'Geliştirme Merkezine Dön'],
+  pvp_results_title: ['⚔️ PVP ARENA ROYALE • MATCH RESULTS', '⚔️ PVP ARENA ROYALE • MAÇ SONUCU'],
+  pvp_pure_elimination_badge: [
+    'PURE ELIMINATION ARENA • NO REVIVES',
+    'TEK ELEME ARENASI • DİRİLME YOKTUR'
+  ],
+  pvp_rank_1_title: ['🏆 #1 VICTORY ROYALE', '🏆 #1 ŞAMPİYON! VICTORY ROYALE'],
+  pvp_rank_1_sub: [
+    'Apex Cyber-Commander • Last Standing',
+    'Zirve Siber Komutanı • Ayakta Kalan Son Kişi'
+  ],
+  pvp_rank_2_title: ['🥈 #2 RUNNER-UP', '🥈 #2 İKİNCİLİK (FİNALİST)'],
+  pvp_rank_2_sub: [
+    'Top 2 Finalist • High-Stakes Duel',
+    'İlk 2 Finalisti • Yüksek Tempolu Mücadele'
+  ],
+  pvp_rank_3_title: ['🥉 #3 ELIMINATED', '🥉 #3 ELENDİN (ÜÇÜNCÜLÜK)'],
+  pvp_rank_3_sub: ['Podium Contender • Arena Defeat', 'Kürsü Derecesi • Arena Yenilgisi'],
+  pvp_rank_4_title: ['💀 #4 ELIMINATED', '💀 #4 ELENDİN (DÖRDÜNCÜLÜK)'],
+  pvp_rank_4_sub: [
+    'Early Elimination • Zero Respawns',
+    'Erken Elenme • Yeniden Doğma Yok'
+  ],
+  pvp_stat_survival: ['SURVIVAL TIME', 'HAYATTA KALMA'],
+  pvp_stat_rivals: ['RIVALS DESTROYED', 'ELENEN RAKİPLER'],
+  pvp_stat_score: ['FINAL SCORE', 'TOPLAM SKOR'],
+  pvp_stat_gold: ['GOLD EARNED', 'KAZANILAN ALTIN'],
+  pvp_stat_trophies: ['TROPHY DELTA', 'KUPA DEĞİŞİMİ'],
+  pvp_ad_shield_btn: [
+    '🛡️ WATCH AD: TROPHY SHIELD (Restore {trophies} 🏆) + 2x GOLD & +1 TECH SHARD',
+    '🛡️ REKLAM İZLE: KUPA KORUMASI (+{trophies} 🏆 Geri Al) + 2x ALTIN & +1 TEKNOLOJİ PARÇASI'
+  ],
+  pvp_ad_boost_btn: [
+    '🎬 WATCH AD: 2x MATCH GOLD (+{gold}🪙) & +1 BONUS TECH SHARD',
+    '🎬 REKLAM İZLE: 2x MAÇ ALTINI (+{gold}🪙) & +1 BONUS TEKNOLOJİ PARÇASI'
+  ],
+  pvp_boost_claimed: ['✓ REWARD BOOST CLAIMED', '✓ REKLAM ÖDÜLÜ ALINDI'],
+  pvp_btn_play_again: ['⚔️ PLAY AGAIN (PVP ROYALE)', '⚔️ TEKRAR OYNA (PVP ROYALE)'],
+  pvp_btn_return_hub: ['🏠 RETURN TO HUB', '🏠 ANA MERKEZE DÖN'],
   crates_modal_title: ['🎁 CYBER SUPPLY CRATES (GACHA LAB)', '🎁 SİBER İKMAL KASALARI (GACHA)'],
   crates_modal_sub: [
     'Open encrypted supply pods for Gold, Gems, and Permanent Tech Shards (+3% All Weapon Damage per Shard)!',

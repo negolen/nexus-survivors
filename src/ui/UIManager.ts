@@ -430,9 +430,12 @@ export class UIManager {
           <div class="workshop-section">
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
               <h3 style="margin:0;">${isTr ? `⚡ KALICI KOMUTAN GÜÇLENDİRME (MAKS SEVİYE SINIRI: SOLO DALGA ${save.getMaxUpgradeLevelCap()})` : `⚡ PERMANENT COMMANDER UPGRADES (MAX LEVEL CAP: SOLO WAVE ${save.getMaxUpgradeLevelCap()})`}</h3>
-              <div style="display:flex; gap:10px; align-items:center; background:rgba(15,23,42,0.9); border:1.5px solid #facc15; padding:6px 14px; border-radius:999px;">
-                <span style="color:#facc15; font-weight:800; font-family:'Orbitron',sans-serif; font-size:0.95rem;">🪙 ${d.gold.toLocaleString()} ${isTr ? 'ALTIN' : 'GOLD'}</span>
-                <span style="color:#38bdf8; font-weight:800; font-family:'Orbitron',sans-serif; font-size:0.95rem;">💎 ${d.gems.toLocaleString()} ${isTr ? 'ELMAS' : 'GEMS'}</span>
+              <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                <button id="btn-meta-max-all" class="btn-gold btn-sm pulse-glow" style="padding:6px 12px; font-size:0.8rem;">⚡ ${isTr ? 'TÜMÜNÜ MAX YAP' : 'MAX ALL'}</button>
+                <div style="display:flex; gap:10px; align-items:center; background:rgba(15,23,42,0.9); border:1.5px solid #facc15; padding:6px 14px; border-radius:999px;">
+                  <span style="color:#facc15; font-weight:800; font-family:'Orbitron',sans-serif; font-size:0.95rem;">🪙 ${d.gold.toLocaleString()} ${isTr ? 'ALTIN' : 'GOLD'}</span>
+                  <span style="color:#38bdf8; font-weight:800; font-family:'Orbitron',sans-serif; font-size:0.95rem;">💎 ${d.gems.toLocaleString()} ${isTr ? 'ELMAS' : 'GEMS'}</span>
+                </div>
               </div>
             </div>
             <p style="font-size:0.85rem; color:#94a3b8; margin-bottom:10px;">
@@ -565,6 +568,29 @@ export class UIManager {
         }
       });
     });
+
+    this.uiLayer.querySelectorAll('[data-meta-max]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const key = (btn as HTMLElement).dataset.metaMax as keyof MetaUpgrades;
+        const count = save.buyMaxMetaUpgrade(key);
+        if (count > 0) {
+          AudioManager.getInstance().playMerge(3);
+          this.renderMainMenu();
+        } else {
+          AudioManager.getInstance().playHit();
+        }
+      });
+    });
+
+    document.getElementById('btn-meta-max-all')?.addEventListener('click', () => {
+      const res = save.buyAllMaxMetaUpgrades();
+      if (res.totalLevels > 0) {
+        AudioManager.getInstance().playMerge(3);
+        this.renderMainMenu();
+      } else {
+        AudioManager.getInstance().playHit();
+      }
+    });
   }
 
   private renderCommanderCard(
@@ -622,7 +648,9 @@ export class UIManager {
     const maxCap = save.getMaxUpgradeLevelCap();
     const isCapped = lvl >= maxCap;
     const cost = save.getMetaUpgradeCost(key);
-    const canAfford = !isCapped && save.data.gold >= cost;
+    const canAffordSingle = !isCapped && save.data.gold >= cost;
+    const maxInfo = save.getMaxAffordableMeta(key);
+    const canAffordMax = !isCapped && maxInfo.levels > 0;
     const isTr = save.data.language === 'tr';
 
     return `
@@ -638,9 +666,20 @@ export class UIManager {
               : ''
           }
         </div>
-        <button data-meta-buy="${key}" class="btn-buy ${canAfford ? '' : 'disabled'}" ${canAfford ? '' : 'disabled'}>
-          ${isCapped ? (isTr ? `MAKS (${maxCap})` : `MAX (${maxCap})`) : `🪙 ${cost.toLocaleString()}`}
-        </button>
+        <div class="meta-actions">
+          <button data-meta-buy="${key}" class="btn-buy btn-meta-single ${canAffordSingle ? '' : 'disabled'}" ${canAffordSingle ? '' : 'disabled'} title="${isTr ? '1 Seviye Artır' : '+1 Level'}">
+            ${isCapped ? (isTr ? 'MAKS' : 'MAX') : `+1 🪙 ${cost.toLocaleString()}`}
+          </button>
+          <button data-meta-max="${key}" class="btn-gold btn-meta-max ${canAffordMax ? '' : 'disabled'}" ${canAffordMax ? '' : 'disabled'} title="${isTr ? 'Maksimum Seviyeye Çıkar' : 'Upgrade to Max Affordable Level'}">
+            ${
+              isCapped
+                ? (isTr ? `MAKS (${maxCap})` : `MAX (${maxCap})`)
+                : maxInfo.levels > 0
+                ? `MAX (+${maxInfo.levels}) 🪙 ${maxInfo.cost.toLocaleString()}`
+                : `MAX (🪙 ${cost.toLocaleString()})`
+            }
+          </button>
+        </div>
       </div>
     `;
   }
@@ -962,6 +1001,10 @@ export class UIManager {
   }
 
   public openDeathModal(): void {
+    if (this.engine.gameMode === 'PVP') {
+      this.renderPvpResultsModal();
+      return;
+    }
     const save = SaveManager.getInstance();
     const canRevive = this.engine.state === 'REVIVE_PROMPT';
     const bonusGold = Math.max(100, Math.floor(this.engine.runGoldEarned * 0.5));
@@ -997,8 +1040,8 @@ export class UIManager {
     document.getElementById('btn-revive-ad')?.addEventListener('click', async () => {
       const ok = await MonetizationManager.getInstance().showRewardedAd('Emergency Revive + Tactical Nuke');
       if (ok) {
-        this.resetToInGameHud();
         this.engine.revivePlayerWithNuke();
+        this.resetToInGameHud();
       }
     });
 
@@ -1012,6 +1055,143 @@ export class UIManager {
     });
 
     document.getElementById('btn-return-menu')?.addEventListener('click', () => {
+      this.engine.state = 'MENU';
+      this.renderMainMenu();
+    });
+  }
+
+  public renderPvpResultsModal(): void {
+    const save = SaveManager.getInstance();
+    const rank = this.engine.pvpFinalRank;
+    const delta = this.engine.pvpTrophyDelta;
+    const isClaimed = this.engine.pvpRewardedAdClaimed;
+
+    const totalSecs = Math.max(1, Math.floor(this.engine.runSurvivalTime));
+    const mins = Math.floor(totalSecs / 60);
+    const secs = totalSecs % 60;
+    const timeFormatted = `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+
+    let rankTitle = '';
+    let rankSub = '';
+    let rankBadgeClass = '';
+    let rankBorderColor = '';
+
+    if (rank === 1) {
+      rankTitle = I18n.t('pvp_rank_1_title');
+      rankSub = I18n.t('pvp_rank_1_sub');
+      rankBadgeClass = 'rank-1';
+      rankBorderColor = '#facc15';
+    } else if (rank === 2) {
+      rankTitle = I18n.t('pvp_rank_2_title');
+      rankSub = I18n.t('pvp_rank_2_sub');
+      rankBadgeClass = 'rank-2';
+      rankBorderColor = '#38bdf8';
+    } else if (rank === 3) {
+      rankTitle = I18n.t('pvp_rank_3_title');
+      rankSub = I18n.t('pvp_rank_3_sub');
+      rankBadgeClass = 'rank-3';
+      rankBorderColor = '#fb923c';
+    } else {
+      rankTitle = I18n.t('pvp_rank_4_title');
+      rankSub = I18n.t('pvp_rank_4_sub');
+      rankBadgeClass = 'rank-4';
+      rankBorderColor = '#f43f5e';
+    }
+
+    const deltaSign = delta > 0 ? `+${delta}` : `${delta}`;
+    const deltaColor = delta > 0 ? '#22c55e' : delta < 0 ? '#f43f5e' : '#facc15';
+    const totalTrophies = save.data.pvpTrophies || 1000;
+
+    this.uiLayer.innerHTML = `
+      ${this.renderTopHud()}
+      <div class="modal-backdrop">
+        <div class="cyber-panel pvp-results-panel" style="border-color: ${rankBorderColor};">
+          <div class="pvp-elim-header">
+            <span class="pvp-pure-elim-tag">${I18n.t('pvp_pure_elimination_badge')}</span>
+            <h1 class="pvp-rank-title ${rankBadgeClass}">${rankTitle}</h1>
+            <p class="pvp-rank-sub">${rankSub}</p>
+          </div>
+
+          <div class="pvp-stats-grid">
+            <div class="pvp-stat-card">
+              <span class="pvp-stat-icon">⏱️</span>
+              <span class="pvp-stat-label">${I18n.t('pvp_stat_survival')}</span>
+              <strong class="pvp-stat-val">${timeFormatted}</strong>
+            </div>
+            <div class="pvp-stat-card">
+              <span class="pvp-stat-icon">⚔️</span>
+              <span class="pvp-stat-label">${I18n.t('pvp_stat_rivals')}</span>
+              <strong class="pvp-stat-val text-amber">${this.engine.runRivalsEliminated} / 3</strong>
+            </div>
+            <div class="pvp-stat-card">
+              <span class="pvp-stat-icon">🎯</span>
+              <span class="pvp-stat-label">${I18n.t('pvp_stat_score')}</span>
+              <strong class="pvp-stat-val">${this.engine.runScore.toLocaleString()}</strong>
+            </div>
+            <div class="pvp-stat-card">
+              <span class="pvp-stat-icon">🪙</span>
+              <span class="pvp-stat-label">${I18n.t('pvp_stat_gold')}</span>
+              <strong class="pvp-stat-val text-yellow">🪙 ${this.engine.runGoldEarned}</strong>
+            </div>
+            <div class="pvp-stat-card pvp-trophy-card" style="border-color: ${deltaColor};">
+              <span class="pvp-stat-icon">🏆</span>
+              <span class="pvp-stat-label">${I18n.t('pvp_stat_trophies')}</span>
+              <strong class="pvp-stat-val" style="color: ${deltaColor}; font-size: 1.25rem;">
+                ${deltaSign} 🏆
+              </strong>
+              <small class="pvp-stat-sub">Total: ${totalTrophies} 🏆</small>
+            </div>
+            <div class="pvp-stat-card">
+              <span class="pvp-stat-icon">💀</span>
+              <span class="pvp-stat-label">HOSTILES</span>
+              <strong class="pvp-stat-val">${this.engine.runKills}</strong>
+            </div>
+          </div>
+
+          <div class="pvp-ad-boost-box">
+            ${
+              isClaimed
+                ? `<div class="pvp-ad-claimed-badge">${I18n.t('pvp_boost_claimed')} (2x Gold + 1 Tech Shard ${delta < 0 ? '+ Trophy Shield' : ''}) ✓</div>`
+                : delta < 0
+                ? `<button id="btn-pvp-ad-boost" class="btn-ad btn-xl pulse-glow">${I18n.t('pvp_ad_shield_btn', { trophies: Math.abs(delta) })}</button>`
+                : `<button id="btn-pvp-ad-boost" class="btn-ad btn-xl pulse-glow">${I18n.t('pvp_ad_boost_btn', { gold: this.engine.runGoldEarned })}</button>`
+            }
+          </div>
+
+          <div class="death-actions" style="margin-top: 16px;">
+            <button id="btn-pvp-play-again" class="btn-primary btn-xl">${I18n.t('pvp_btn_play_again')}</button>
+            <button id="btn-pvp-return-menu" class="btn-secondary">${I18n.t('pvp_btn_return_hub')}</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    this.bindTopHudEvents();
+
+    document.getElementById('btn-pvp-ad-boost')?.addEventListener('click', async () => {
+      const ok = await MonetizationManager.getInstance().showRewardedAd(
+        delta < 0 ? 'PVP Trophy Shield + 2x Gold' : 'PVP 2x Gold + Tech Shard'
+      );
+      if (ok) {
+        this.engine.pvpRewardedAdClaimed = true;
+        if (delta < 0) {
+          save.applyPvpTrophyShield(Math.abs(delta));
+        }
+        save.addGold(this.engine.runGoldEarned);
+        save.addTechShards(1);
+        AudioManager.getInstance().playCoin();
+        this.renderPvpResultsModal();
+      }
+    });
+
+    document.getElementById('btn-pvp-play-again')?.addEventListener('click', () => {
+      AudioManager.getInstance().playClick();
+      this.engine.startNewRun('PVP');
+      this.resetToInGameHud();
+    });
+
+    document.getElementById('btn-pvp-return-menu')?.addEventListener('click', () => {
+      AudioManager.getInstance().playClick();
       this.engine.state = 'MENU';
       this.renderMainMenu();
     });

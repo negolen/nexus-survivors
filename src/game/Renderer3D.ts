@@ -235,30 +235,56 @@ export class Renderer3D {
     this.resize(window.innerWidth, window.innerHeight);
   }
 
-  /** Mobile / portrait screens get a wider, zoomed-out camera so more of the arena is visible. */
+  /** Mobile / portrait screens get a responsive dynamic FOV & zoom so the arena is generously visible across every device. */
   private camZoom = 1;
 
   public resize(width: number, height: number): void {
-    this.camera.aspect = width / Math.max(1, height);
+    const aspect = width / Math.max(1, height);
+    this.camera.aspect = aspect;
+
+    // Responsive dynamic FOV and camera zoom across all phones, tablets and browsers:
+    // When aspect < 1.0 (portrait mode), fixed vertical FOV reduces horizontal coverage.
+    // By dynamically calculating the vertical FOV from a healthy target horizontal FOV,
+    // enemies approaching from left and right are clearly visible on every smartphone.
+    const baseFov = 45;
+    if (aspect < 0.62) {
+      // Ultra-tall phones (iPhone 13/14/15/16, modern Androids with ~9:19.5 aspect ratio)
+      const targetHFov = (64 * Math.PI) / 180;
+      const vFovRad = 2 * Math.atan(Math.tan(targetHFov / 2) / aspect);
+      this.camera.fov = Math.min(74, Math.max(baseFov, (vFovRad * 180) / Math.PI));
+      this.camZoom = 1.35;
+    } else if (aspect < 1.0) {
+      // Standard portrait phones & tablets (iPad portrait, aspect ~0.75)
+      const targetHFov = (66 * Math.PI) / 180;
+      const vFovRad = 2 * Math.atan(Math.tan(targetHFov / 2) / aspect);
+      this.camera.fov = Math.min(68, Math.max(baseFov, (vFovRad * 180) / Math.PI));
+      this.camZoom = 1.25;
+    } else if (height < 520) {
+      // Landscape mobile phones
+      this.camera.fov = 48;
+      this.camZoom = 1.3;
+    } else if (width < 1024) {
+      // Tablets / small browser windows
+      this.camera.fov = baseFov;
+      this.camZoom = 1.15;
+    } else {
+      // Standard desktop / wide screens
+      this.camera.fov = baseFov;
+      this.camZoom = 1.0;
+    }
+
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(width, height);
-
-    const aspect = width / Math.max(1, height);
-    const shortSide = Math.min(width, height);
-    let zoom = 1;
-    if (aspect < 1) zoom = aspect < 0.62 ? 1.75 : 1.55; // portrait phones / tablets
-    else if (shortSide < 520) zoom = 1.4; // landscape phones
-    else if (width < 1024) zoom = 1.15; // small tablets / laptops
-    this.camZoom = zoom;
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 
     // Widen the shadow frustum so zoomed-out views keep crisp shadows at the edges
-    const s = 620 * zoom;
+    const s = 650 * this.camZoom;
     const cam = this.dirLight.shadow.camera;
     cam.left = -s;
     cam.right = s;
     cam.top = s;
     cam.bottom = -s;
-    cam.far = 1600 * zoom;
+    cam.far = 1800 * this.camZoom;
     cam.updateProjectionMatrix();
   }
 

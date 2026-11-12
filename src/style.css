@@ -20,13 +20,29 @@
   -webkit-user-select: none;
 }
 
-html, body, #app {
-  width: 100vw;
-  height: 100vh;
+html, body {
+  width: 100%;
+  height: 100%;
+  height: 100dvh;
+  margin: 0;
+  padding: 0;
   overflow: hidden;
+  position: fixed;
+  inset: 0;
+  touch-action: none;
+  -webkit-text-size-adjust: 100%;
   background: var(--bg-dark);
   font-family: 'Rajdhani', sans-serif;
   color: var(--text-main);
+}
+
+#app {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  touch-action: none;
 }
 
 /* FONT ORBITRON GROUPED RULE - SAVES REPEATED DECLARATIONS */
@@ -52,7 +68,7 @@ button, .hp-bar-label, .wave-pill strong, .currency-pill strong,
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 10px 18px;
+  padding: max(10px, env(safe-area-inset-top, 10px)) max(18px, env(safe-area-inset-right, 18px)) 10px max(18px, env(safe-area-inset-left, 18px));
   background: linear-gradient(180deg, rgba(7, 10, 20, 0.94) 0%, rgba(7, 10, 20, 0.4) 80%, rgba(7, 10, 20, 0) 100%);
   gap: 10px;
   position: relative;
@@ -65,7 +81,7 @@ button, .hp-bar-label, .wave-pill strong, .currency-pill strong,
   top: 0;
   left: 0;
   right: 0;
-  padding: 6px 14px;
+  padding: max(6px, env(safe-area-inset-top, 6px)) max(14px, env(safe-area-inset-right, 14px)) 6px max(14px, env(safe-area-inset-left, 14px));
   background: linear-gradient(180deg, rgba(7, 10, 20, 0.92) 0%, rgba(7, 10, 20, 0.5) 75%, rgba(7, 10, 20, 0) 100%);
   gap: 8px;
   flex-wrap: nowrap !important;
@@ -396,12 +412,34 @@ button, .hp-bar-label, .wave-pill strong, .currency-pill strong,
   align-items: center;
   background: rgba(30, 41, 59, 0.65);
   border: 1px solid rgba(148, 163, 184, 0.22);
-  padding: 12px 14px;
+  padding: 10px 14px;
   border-radius: 10px;
+  gap: 10px;
 }
-.meta-info h4 { font-size: 1rem; color: #fff; }
+.meta-info {
+  flex: 1 1 180px;
+  min-width: 140px;
+}
+.meta-info h4 { font-size: 0.98rem; color: #fff; }
 .lvl-tag { font-size: 0.75rem; color: var(--neon-blue); margin-left: 6px; }
-.meta-info p { font-size: 0.85rem; color: var(--text-muted); }
+.meta-info p { font-size: 0.82rem; color: var(--text-muted); }
+
+.meta-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-shrink: 0;
+}
+.btn-meta-single {
+  padding: 7px 11px;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+.btn-meta-max {
+  padding: 7px 12px;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
 
 /* BUTTONS */
 button {
@@ -760,11 +798,151 @@ button:disabled, button.disabled { opacity: 0.45; cursor: not-allowed; transform
 }
 
 /* ========================================================= */
+/* PVP ARENA ROYALE POST-DEATH RESULTS SCREEN               */
+/* ========================================================= */
+.pvp-results-panel {
+  max-width: 620px;
+  text-align: center;
+  padding: 24px 20px;
+  background: radial-gradient(circle at top, rgba(15, 23, 42, 0.98), rgba(2, 6, 23, 0.98));
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.9), 0 0 40px rgba(56, 189, 248, 0.15);
+}
+
+.pvp-elim-header {
+  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.pvp-pure-elim-tag {
+  display: inline-block;
+  padding: 4px 12px;
+  background: rgba(244, 63, 94, 0.15);
+  border: 1px solid rgba(244, 63, 94, 0.5);
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  color: #f43f5e;
+  text-transform: uppercase;
+}
+
+.pvp-rank-title {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 1.85rem;
+  font-weight: 900;
+  letter-spacing: 1px;
+  margin: 4px 0 2px 0;
+}
+
+.pvp-rank-title.rank-1 {
+  color: #facc15;
+  text-shadow: 0 0 25px rgba(250, 204, 21, 0.75), 0 0 10px rgba(250, 204, 21, 0.4);
+}
+
+.pvp-rank-title.rank-2 {
+  color: #38bdf8;
+  text-shadow: 0 0 25px rgba(56, 189, 248, 0.75), 0 0 10px rgba(56, 189, 248, 0.4);
+}
+
+.pvp-rank-title.rank-3 {
+  color: #fb923c;
+  text-shadow: 0 0 25px rgba(251, 146, 60, 0.75), 0 0 10px rgba(251, 146, 60, 0.4);
+}
+
+.pvp-rank-title.rank-4 {
+  color: #f43f5e;
+  text-shadow: 0 0 25px rgba(244, 63, 94, 0.75), 0 0 10px rgba(244, 63, 94, 0.4);
+}
+
+.pvp-rank-sub {
+  color: #94a3b8;
+  font-size: 0.88rem;
+  letter-spacing: 0.5px;
+}
+
+.pvp-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin: 16px 0;
+}
+
+.pvp-stat-card {
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 10px;
+  padding: 10px 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.16s ease;
+}
+
+.pvp-stat-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(56, 189, 248, 0.4);
+}
+
+.pvp-stat-icon {
+  font-size: 1.2rem;
+  margin-bottom: 2px;
+}
+
+.pvp-stat-label {
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.8px;
+  color: #94a3b8;
+  text-transform: uppercase;
+}
+
+.pvp-stat-val {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: #f8fafc;
+  margin-top: 3px;
+}
+
+.pvp-stat-sub {
+  font-size: 0.72rem;
+  color: #64748b;
+  margin-top: 2px;
+  font-weight: 600;
+}
+
+.pvp-trophy-card {
+  border-width: 1.5px;
+}
+
+.pvp-ad-boost-box {
+  margin: 14px 0 8px 0;
+  display: flex;
+  justify-content: center;
+}
+
+.pvp-ad-claimed-badge {
+  background: rgba(34, 197, 94, 0.15);
+  border: 1.5px solid #22c55e;
+  color: #22c55e;
+  padding: 10px 20px;
+  border-radius: 999px;
+  font-family: 'Orbitron', sans-serif;
+  font-weight: 800;
+  font-size: 0.88rem;
+  letter-spacing: 0.5px;
+}
+
+/* ========================================================= */
 /* COMPREHENSIVE RESPONSIVE MOBILE & TABLET MEDIA QUERIES   */
 /* ========================================================= */
 @media (max-width: 860px) {
   .in-game-hud {
-    padding: 5px 8px;
+    padding: max(5px, env(safe-area-inset-top, 5px)) max(8px, env(safe-area-inset-right, 8px)) 5px max(8px, env(safe-area-inset-left, 8px));
     gap: 6px;
   }
   .hud-vitals, .hud-stats {
@@ -806,7 +984,7 @@ button:disabled, button.disabled { opacity: 0.45; cursor: not-allowed; transform
 
 @media (max-width: 580px) {
   .in-game-hud {
-    padding: 3px 5px;
+    padding: max(3px, env(safe-area-inset-top, 3px)) max(5px, env(safe-area-inset-right, 5px)) 3px max(5px, env(safe-area-inset-left, 5px));
     gap: 4px;
   }
   .hud-vitals, .hud-stats {
@@ -843,6 +1021,25 @@ button:disabled, button.disabled { opacity: 0.45; cursor: not-allowed; transform
   }
   .hide-on-tiny {
     display: none !important;
+  }
+
+  .meta-card {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    padding: 10px;
+  }
+  .meta-actions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr 1.25fr;
+    gap: 6px;
+  }
+  .btn-meta-single, .btn-meta-max {
+    width: 100%;
+    text-align: center;
+    padding: 8px 4px;
+    font-size: 0.76rem;
   }
 
   /* Modal panels full-bleed on mobile */
@@ -885,5 +1082,12 @@ button:disabled, button.disabled { opacity: 0.45; cursor: not-allowed; transform
     flex-direction: column;
     align-items: flex-start;
     padding: 6px 10px;
+  }
+  .pvp-stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px;
+  }
+  .pvp-rank-title {
+    font-size: 1.45rem;
   }
 }

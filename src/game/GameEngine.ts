@@ -212,6 +212,13 @@ export class GameEngine {
   public runScore = 0;
   public revivedThisRun = false;
 
+  // PvP Arena Royale metrics
+  public runSurvivalTime = 0;
+  public runRivalsEliminated = 0;
+  public pvpFinalRank = 4;
+  public pvpTrophyDelta = 0;
+  public pvpRewardedAdClaimed = false;
+
   // Game Speed (1x or 2x Turbo)
   public gameSpeedMultiplier = 1;
   public tempAdSpeedWave = false;
@@ -258,14 +265,22 @@ export class GameEngine {
 
     this.handleResize();
     window.addEventListener('resize', () => this.handleResize());
+    window.visualViewport?.addEventListener('resize', () => this.handleResize());
+    window.addEventListener('orientationchange', () => {
+      setTimeout(() => this.handleResize(), 80);
+      setTimeout(() => this.handleResize(), 250);
+    });
     this.bindInputs();
     requestAnimationFrame((t) => this.loop(t));
   }
 
   private handleResize(): void {
-    this.canvas.width = window.innerWidth;
-    this.canvas.height = window.innerHeight;
-    this.renderer3d?.resize(window.innerWidth, window.innerHeight);
+    const w = Math.round(window.visualViewport?.width || window.innerWidth);
+    const h = Math.round(window.visualViewport?.height || window.innerHeight);
+    this.canvas.width = w;
+    this.canvas.height = h;
+    this.renderer3d?.resize(w, h);
+    this.onHudUpdate?.();
   }
 
   private bindInputs(): void {
@@ -372,6 +387,11 @@ export class GameEngine {
     this.runKills = 0;
     this.runScore = 0;
     this.revivedThisRun = false;
+    this.runSurvivalTime = 0;
+    this.runRivalsEliminated = 0;
+    this.pvpFinalRank = 4;
+    this.pvpTrophyDelta = 0;
+    this.pvpRewardedAdClaimed = false;
 
     save.addGold(save.getStartingWaveGold());
     this.startWave(1);
@@ -530,6 +550,7 @@ export class GameEngine {
   }
 
   public revivePlayerWithNuke(): void {
+    if (this.gameMode === 'PVP') return; // Strict Pure Elimination: zero revives in PvP Arena
     this.revivedThisRun = true;
     this.player.hp = this.player.maxHp;
     this.player.invulnTimer = 3.0;
@@ -567,6 +588,7 @@ export class GameEngine {
   }
 
   private update(dt: number): void {
+    this.runSurvivalTime += dt;
     const save = SaveManager.getInstance();
 
     // 1. Check Active Boss, Enrage Stages (10s/20s/30s), & 34s Supernova Detonation
@@ -1162,6 +1184,8 @@ export class GameEngine {
       this.spawnParticles(e.x, e.y, e.color, e.type === 'boss' || e.type === 'rival' ? 30 : 8);
 
       if (e.type === 'rival') {
+        this.runRivalsEliminated += 1;
+        this.pvpTrophyDelta += 15;
         save.addPvpTrophies(15, 1);
         this.screenShake = Math.max(this.screenShake, 12);
         AudioManager.getInstance().playExplosion();
@@ -1406,6 +1430,7 @@ export class GameEngine {
     this.runGoldEarned += waveBonus;
 
     if (this.gameMode === 'PVP') {
+      this.pvpTrophyDelta += 25;
       save.addPvpTrophies(25, 0);
     }
 
@@ -1468,7 +1493,39 @@ export class GameEngine {
       save.data.highScore = this.runScore;
       save.save();
     }
-    this.state = this.revivedThisRun ? 'GAMEOVER' : 'REVIVE_PROMPT';
+
+    if (this.gameMode === 'PVP') {
+      // 1. PURE ELIMINATION: In PvP Royale, death is final and decisive!
+      // Zero revive prompts, zero nuke revive, zero second chances!
+      this.state = 'GAMEOVER';
+
+      // 2. Determine final placement rank based on active rivals alive in arena
+      let rivalsAlive = 0;
+      for (let i = 0; i < this.enemies.length; i++) {
+        if (this.enemies[i].type === 'rival') rivalsAlive++;
+      }
+      // 3 rivals alive -> #4. 2 rivals alive -> #3. 1 rival alive -> #2. 0 rivals alive -> #1.
+      this.pvpFinalRank = Math.min(4, Math.max(1, rivalsAlive + 1));
+
+      // 3. Competitive Rank Placement Modifier:
+      // #1: +40 trophies
+      // #2: +15 trophies
+      // #3: +0 trophies
+      // #4: -25 trophies (penalized for early elimination)
+      let rankModifier = 0;
+      if (this.pvpFinalRank === 1) rankModifier = 40;
+      else if (this.pvpFinalRank === 2) rankModifier = 15;
+      else if (this.pvpFinalRank === 3) rankModifier = 0;
+      else rankModifier = -25;
+
+      this.pvpTrophyDelta += rankModifier;
+
+      // Apply rank placement modifier to save data (kills & wave bonuses were already recorded live)
+      save.applyPvpMatchOutcome(this.pvpFinalRank, rankModifier, 0);
+    } else {
+      this.state = this.revivedThisRun ? 'GAMEOVER' : 'REVIVE_PROMPT';
+    }
+
     AudioManager.getInstance().playExplosion();
     this.onPlayerDeath?.();
   }
@@ -1559,7 +1616,8 @@ export class GameEngine {
       const barW = Math.min(580, w * 0.94);
       const barH = isMobile ? 20 : 24;
       const barX = (w - barW) / 2;
-      const barY = Math.max(isMobile ? 38 : 46, this.hudBottom + 6);
+      const hudOffset = this.hudBottom > 0 ? this.hudBottom + 6 : (isMobile ? 52 : 48);
+      const barY = hudOffset;
       bossBarBottom = barY + barH;
       const pct = Math.max(0, activeBoss.hp / activeBoss.maxHp);
       const detLeft = Math.max(0, 34 - this.bossElapsedTime);
@@ -1591,7 +1649,8 @@ export class GameEngine {
       const isMobile = w < 600;
       const trophies = SaveManager.getInstance().data.pvpTrophies || 1000;
       const pwrLvl = SaveManager.getInstance().getCommanderPowerLevel();
-      const pvpY = activeBoss ? bossBarBottom + 4 : Math.max(isMobile ? 38 : 46, this.hudBottom + 6);
+      const hudOffset = this.hudBottom > 0 ? this.hudBottom + 6 : (isMobile ? 52 : 48);
+      const pvpY = activeBoss ? bossBarBottom + 4 : hudOffset;
       const boxH = isMobile ? 20 : 22;
       ctx.save();
       ctx.font = isMobile ? '700 10px Orbitron, sans-serif' : '700 11px Orbitron, sans-serif';
