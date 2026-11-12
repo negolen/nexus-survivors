@@ -4,11 +4,17 @@ export type CommanderId = 'vanguard' | 'valkyrie' | 'tesla_engineer' | 'void_pha
 export type ArenaThemeId = 'auto' | 'cyber_nebula' | 'solar_inferno' | 'cryo_glacier' | 'emerald_matrix';
 
 export interface MetaUpgrades {
-  damageLevel: number;
   maxHpLevel: number;
-  startingGoldLevel: number;
+  shieldCapacityLevel: number;
+  shieldRegenLevel: number;
+  armorLevel: number;
+  hpRegenLevel: number;
+  moveSpeedLevel: number;
   magnetLevel: number;
-  attackSpeedLevel: number;
+  critChanceLevel: number;
+  damageLevel?: number;
+  startingGoldLevel?: number;
+  attackSpeedLevel?: number;
 }
 
 export interface MissionTiers {
@@ -105,10 +111,16 @@ const DEFAULT_SAVE: SaveData = {
   iapPurchasesCount: 0,
   soundEnabled: true,
   meta: {
-    damageLevel: 0,
     maxHpLevel: 0,
-    startingGoldLevel: 0,
+    shieldCapacityLevel: 0,
+    shieldRegenLevel: 0,
+    armorLevel: 0,
+    hpRegenLevel: 0,
+    moveSpeedLevel: 0,
     magnetLevel: 0,
+    critChanceLevel: 0,
+    damageLevel: 0,
+    startingGoldLevel: 0,
     attackSpeedLevel: 0
   }
 };
@@ -259,7 +271,9 @@ export class SaveManager {
 
   public getCommanderPowerLevel(): number {
     const m = this.data.meta;
-    return 1 + m.damageLevel + m.maxHpLevel + m.attackSpeedLevel + m.startingGoldLevel + Math.floor(this.data.techShards / 2);
+    const baseSum = (m.maxHpLevel || 0) + (m.shieldCapacityLevel || 0) + (m.shieldRegenLevel || 0) + (m.armorLevel || 0) +
+                    (m.hpRegenLevel || 0) + (m.moveSpeedLevel || 0) + (m.magnetLevel || 0) + (m.critChanceLevel || 0);
+    return 1 + baseSum + Math.floor(this.data.techShards / 2);
   }
 
   public addPvpTrophies(delta: number, rivalsKilled = 0): void {
@@ -382,16 +396,17 @@ export class SaveManager {
   }
 
   public getMetaUpgradeCost(key: keyof MetaUpgrades): number {
-    const lvl = this.data.meta[key];
+    const lvl = this.data.meta[key] ?? 0;
     return Math.floor(100 * Math.pow(1.55, lvl));
   }
 
   public buyMetaUpgrade(key: keyof MetaUpgrades): boolean {
     const maxCap = this.getMaxUpgradeLevelCap();
-    if (this.data.meta[key] >= maxCap) return false;
+    const current = this.data.meta[key] ?? 0;
+    if (current >= maxCap) return false;
     const cost = this.getMetaUpgradeCost(key);
     if (!this.spendGold(cost)) return false;
-    this.data.meta[key] += 1;
+    this.data.meta[key] = current + 1;
     this.save();
     return true;
   }
@@ -399,7 +414,7 @@ export class SaveManager {
   /** Calculates the maximum levels affordable with current gold up to the Solo wave cap. */
   public getMaxAffordableMeta(key: keyof MetaUpgrades): { levels: number; cost: number; targetLevel: number } {
     const maxCap = this.getMaxUpgradeLevelCap();
-    const current = this.data.meta[key];
+    const current = this.data.meta[key] ?? 0;
     let levels = 0;
     let cost = 0;
     let goldLeft = this.data.gold;
@@ -422,14 +437,23 @@ export class SaveManager {
     const { levels, cost } = this.getMaxAffordableMeta(key);
     if (levels <= 0) return 0;
     if (!this.spendGold(cost)) return 0;
-    this.data.meta[key] += levels;
+    this.data.meta[key] = (this.data.meta[key] ?? 0) + levels;
     this.save();
     return levels;
   }
 
-  /** Upgrades ALL meta attributes to their maximum affordable levels! */
+  /** Upgrades ALL 8 base character meta attributes to their maximum affordable levels! */
   public buyAllMaxMetaUpgrades(): { totalLevels: number; totalCost: number } {
-    const keys: Array<keyof MetaUpgrades> = ['damageLevel', 'maxHpLevel', 'attackSpeedLevel', 'startingGoldLevel'];
+    const keys: Array<keyof MetaUpgrades> = [
+      'maxHpLevel',
+      'shieldCapacityLevel',
+      'shieldRegenLevel',
+      'armorLevel',
+      'hpRegenLevel',
+      'moveSpeedLevel',
+      'magnetLevel',
+      'critChanceLevel'
+    ];
     let totalLevels = 0;
     let totalCost = 0;
 
@@ -438,10 +462,10 @@ export class SaveManager {
       changed = false;
       for (const k of keys) {
         const maxCap = this.getMaxUpgradeLevelCap();
-        if (this.data.meta[k] < maxCap) {
+        if ((this.data.meta[k] ?? 0) < maxCap) {
           const c = this.getMetaUpgradeCost(k);
           if (this.spendGold(c)) {
-            this.data.meta[k]++;
+            this.data.meta[k] = (this.data.meta[k] ?? 0) + 1;
             totalLevels++;
             totalCost += c;
             changed = true;
@@ -456,24 +480,54 @@ export class SaveManager {
   public getDamageMultiplier(): number {
     const cmdBonus = this.data.selectedCommander === 'tesla_engineer' ? 0.25 : 0;
     const shardBonus = this.data.techShards * 0.03;
-    return 1 + this.data.meta.damageLevel * 0.15 + cmdBonus + shardBonus;
+    return 1 + (this.data.meta.damageLevel ?? 0) * 0.15 + cmdBonus + shardBonus;
   }
 
   public getBonusMaxHp(): number {
-    const cmdHp = this.data.selectedCommander === 'vanguard' ? 25 : 0;
-    return this.data.meta.maxHpLevel * 30 + cmdHp;
+    const cmdHp = this.data.selectedCommander === 'vanguard' ? 35 : 0;
+    return (this.data.meta.maxHpLevel ?? 0) * 30 + cmdHp;
   }
 
-  public getStartingWaveGold(): number {
-    return 40 + this.data.meta.startingGoldLevel * 25;
+  public getBonusShield(): number {
+    const cmdShield = this.data.selectedCommander === 'vanguard' ? 25 : 0;
+    return (this.data.meta.shieldCapacityLevel ?? 0) * 20 + cmdShield;
+  }
+
+  public getShieldRegen(): number {
+    const cap = this.getBonusShield();
+    if (cap <= 0) return 0;
+    return 2.0 + (this.data.meta.shieldRegenLevel ?? 0) * 1.5;
+  }
+
+  public getArmor(): number {
+    const cmdArmor = this.data.selectedCommander === 'vanguard' ? 3 : 0;
+    return (this.data.meta.armorLevel ?? 0) * 2 + cmdArmor;
+  }
+
+  public getHpRegen(): number {
+    return (this.data.meta.hpRegenLevel ?? 0) * 0.8;
+  }
+
+  public getMoveSpeedMultiplier(): number {
+    const cmdSpeed = this.data.selectedCommander === 'void_phantom' ? 0.15 : 0;
+    return 1 + (this.data.meta.moveSpeedLevel ?? 0) * 0.04 + cmdSpeed;
   }
 
   public getMagnetRadius(): number {
-    return 100 + this.data.meta.magnetLevel * 25;
+    return 100 + (this.data.meta.magnetLevel ?? 0) * 22;
+  }
+
+  public getCritChanceBonus(): number {
+    const cmdCrit = this.data.selectedCommander === 'void_phantom' ? 0.08 : 0;
+    return (this.data.meta.critChanceLevel ?? 0) * 0.025 + cmdCrit;
+  }
+
+  public getStartingWaveGold(): number {
+    return 40 + (this.data.meta.startingGoldLevel ?? 0) * 25;
   }
 
   public getAttackSpeedMultiplier(): number {
-    return 1 + this.data.meta.attackSpeedLevel * 0.08;
+    return 1 + (this.data.meta.attackSpeedLevel ?? 0) * 0.08;
   }
 
   public resetSave(): void {

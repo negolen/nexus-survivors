@@ -117,6 +117,18 @@ button, .hp-bar-label, .wave-pill strong, .currency-pill strong,
 .xp-bar-fill, .hp-bar-fill { height: 100%; transition: width 0.15s ease-out; }
 .xp-bar-fill { background: linear-gradient(90deg, #0284c7, #38bdf8); }
 .hp-bar-fill { background: linear-gradient(90deg, #e11d48, #fb7185); }
+.shield-bar-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: linear-gradient(90deg, rgba(2, 132, 199, 0.75), rgba(56, 189, 248, 0.9));
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.6);
+  border-right: 2px solid #38bdf8;
+  transition: width 0.15s ease-out;
+  pointer-events: none;
+  z-index: 2;
+}
 
 .hp-bar-label {
   position: absolute;
@@ -128,6 +140,7 @@ button, .hp-bar-label, .wave-pill strong, .currency-pill strong,
   font-weight: 700;
   text-shadow: 0 1px 3px #000, 0 0 6px rgba(0, 0, 0, 0.9);
   white-space: nowrap;
+  z-index: 3;
 }
 
 .wave-pill, .currency-pill {

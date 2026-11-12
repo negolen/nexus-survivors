@@ -138,6 +138,7 @@ export class Renderer3D {
   private playerTurretGroup = new THREE.Group();
   private playerThrusterMesh!: THREE.Mesh;
   private playerLight!: THREE.PointLight;
+  private playerShieldBubble!: THREE.Mesh;
   private commanderAttachments: Record<CommanderId, THREE.Group> = {
     vanguard: new THREE.Group(),
     valkyrie: new THREE.Group(),
@@ -1080,6 +1081,22 @@ export class Renderer3D {
     this.playerLight.position.set(0, 52, 0);
     this.playerGroup.add(this.playerLight);
 
+    const shieldGeo = new THREE.IcosahedronGeometry(28, 2);
+    const shieldMat = new THREE.MeshPhysicalMaterial({
+      color: 0x38bdf8,
+      emissive: 0x0284c7,
+      emissiveIntensity: 0.6,
+      transparent: true,
+      opacity: 0.28,
+      roughness: 0.2,
+      metalness: 0.1,
+      wireframe: true
+    });
+    this.playerShieldBubble = new THREE.Mesh(shieldGeo, shieldMat);
+    this.playerShieldBubble.position.y = 20;
+    this.playerShieldBubble.visible = false;
+    this.playerGroup.add(this.playerShieldBubble);
+
     this.enableShadowsRecursive(this.playerGroup);
     this.scene.add(this.playerGroup);
   }
@@ -1390,6 +1407,13 @@ export class Renderer3D {
     this.playerGroup.position.set(player.x, hoverBob, player.y);
     this.playerTurretGroup.rotation.y = -player.angle;
     this.playerThrusterMesh.scale.y = 0.85 + Math.sin(now * 28) * 0.25;
+
+    const hasShield = ((player as any).shield || 0) > 0;
+    this.playerShieldBubble.visible = hasShield;
+    if (hasShield) {
+      this.playerShieldBubble.rotation.y = now * 1.5;
+      this.playerShieldBubble.rotation.x = Math.sin(now * 0.8) * 0.15;
+    }
 
     // 4. Update 6 Orbiting Multi-Part Weapon Drones (Zero-GC: uses cached THREE.Color)
     for (let i = 0; i < 6; i++) {

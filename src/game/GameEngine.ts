@@ -181,6 +181,12 @@ export class GameEngine {
     radius: 20,
     hp: 100,
     maxHp: 100,
+    shield: 0,
+    maxShield: 0,
+    shieldRegen: 0,
+    shieldRechargeDelay: 0,
+    armor: 0,
+    hpRegen: 0,
     speed: 245,
     invulnTimer: 0,
     angle: 0,
@@ -342,7 +348,7 @@ export class GameEngine {
     this.runBuffs = {
       damageMult: 0,
       attackSpeedMult: cmd === 'valkyrie' ? 0.15 : 0,
-      critChance: cmd === 'void_phantom' ? 0.2 : 0,
+      critChance: (cmd === 'void_phantom' ? 0.2 : 0) + save.getCritChanceBonus(),
       goldMult: 0,
       magnetMult: 0,
       moveSpeedMult: cmd === 'void_phantom' ? 0.3 : cmd === 'valkyrie' ? 0.12 : 0
@@ -367,12 +373,12 @@ export class GameEngine {
       this.weapons.addWeaponToAvailableSlot(this.weapons.createWeapon('plasma', 3));
     }
 
-    // In PVP mode, your Starting Gold Meta-Upgrade & Commander Power Level convert directly into bonus starting orbital weapons &auto-merge!
+    // In PVP mode, your Commander Power Level & Tech Shards convert directly into bonus starting orbital weapons & auto-merge!
     if (mode === 'PVP') {
-      const bonusPods = Math.min(4, Math.floor(save.data.meta.startingGoldLevel / 2) + (save.data.techShards >= 5 ? 1 : 0));
+      const bonusPods = Math.min(4, Math.floor(save.getCommanderPowerLevel() / 3) + (save.data.techShards >= 5 ? 1 : 0));
       const archetypes: WeaponArchetypeId[] = ['plasma', 'tesla', 'frost', 'sawblade', 'missile'];
       for (let b = 0; b < bonusPods; b++) {
-        const arch = archetypes[(b + save.data.meta.damageLevel) % archetypes.length];
+        const arch = archetypes[(b + (save.data.meta.critChanceLevel || 0)) % archetypes.length];
         this.weapons.addWeaponToAvailableSlot(this.weapons.createWeapon(arch, 1));
       }
       this.weapons.autoMergeAll();
@@ -454,6 +460,13 @@ export class GameEngine {
     const baseMax = 100 + save.getBonusMaxHp() + (waveNum - 1) * 12;
     this.player.maxHp = Math.max(this.player.maxHp, baseMax);
     this.player.hp = this.player.maxHp;
+    this.player.maxShield = save.getBonusShield();
+    this.player.shield = this.player.maxShield;
+    this.player.shieldRegen = save.getShieldRegen();
+    this.player.shieldRechargeDelay = 0;
+    this.player.armor = save.getArmor();
+    this.player.hpRegen = save.getHpRegen();
+    this.player.speed = 245 * save.getMoveSpeedMultiplier();
     this.player.invulnTimer = 1.0;
 
     this.enemies = [];
@@ -553,6 +566,8 @@ export class GameEngine {
     if (this.gameMode === 'PVP') return; // Strict Pure Elimination: zero revives in PvP Arena
     this.revivedThisRun = true;
     this.player.hp = this.player.maxHp;
+    this.player.shield = this.player.maxShield;
+    this.player.shieldRechargeDelay = 0;
     this.player.invulnTimer = 3.0;
     this.screenShake = 18;
     this.bossElapsedTime = 0;
@@ -681,6 +696,20 @@ export class GameEngine {
       this.screenShake = Math.max(0, this.screenShake - dt * 35);
     }
 
+    // Passive Base Stats: Nanite HP Regeneration & Energy Shield Recharge
+    if (this.player.hp > 0) {
+      if (this.player.hpRegen > 0 && this.player.hp < this.player.maxHp) {
+        this.player.hp = Math.min(this.player.maxHp, this.player.hp + this.player.hpRegen * dt);
+      }
+      if (this.player.maxShield > 0) {
+        if (this.player.shieldRechargeDelay > 0) {
+          this.player.shieldRechargeDelay -= dt;
+        } else if (this.player.shield < this.player.maxShield) {
+          this.player.shield = Math.min(this.player.maxShield, this.player.shield + this.player.shieldRegen * dt);
+        }
+      }
+    }
+
     // 3. Enemy Spawning
     this.spawnTimer -= dt;
     if (this.spawnTimer <= 0) {
@@ -733,18 +762,8 @@ export class GameEngine {
           const distP = Math.hypot(p.x - this.player.x, p.y - this.player.y);
           if (distP <= p.radius + this.player.radius) {
             alive = false;
-            if (this.player.invulnTimer <= 0) {
-              this.player.hp -= p.damage;
-              this.player.invulnTimer = 0.35;
-              this.screenShake = 8;
-              AudioManager.getInstance().playHit();
-              this.spawnFloatingText(this.player.x, this.player.y - 25, `-${p.damage} HP`, '#f43f5e', 1.2);
-              if (this.player.hp <= 0) {
-                this.player.hp = 0;
-                this.handlePlayerDeath();
-                return;
-              }
-            }
+            this.damagePlayer(p.damage, 0.35);
+            if (this.state === 'GAMEOVER' || this.state === 'REVIVE_PROMPT') return;
           } else {
             for (let j = this.enemies.length - 1; j >= 0; j--) {
               const e = this.enemies[j];
@@ -837,19 +856,8 @@ export class GameEngine {
       }
 
       if (distToPlayer < this.player.radius + e.radius) {
-        if (this.player.invulnTimer <= 0) {
-          this.player.hp -= e.damage;
-          this.player.invulnTimer = 0.45;
-          this.screenShake = 10;
-          AudioManager.getInstance().playHit();
-          this.spawnFloatingText(this.player.x, this.player.y - 25, `-${e.damage} HP`, '#ef4444', 1.25);
-
-          if (this.player.hp <= 0) {
-            this.player.hp = 0;
-            this.handlePlayerDeath();
-            return;
-          }
-        }
+        this.damagePlayer(e.damage, 0.45);
+        if (this.state === 'GAMEOVER' || this.state === 'REVIVE_PROMPT') return;
       }
     }
 
@@ -1485,6 +1493,39 @@ export class GameEngine {
     this.state = 'SHOP';
     this.persistSoloCheckpoint(this.currentWave + 1);
     this.onWaveComplete?.();
+  }
+
+  public damagePlayer(rawDmg: number, invulnDuration = 0.4): void {
+    if (this.player.invulnTimer > 0) return;
+    this.player.invulnTimer = invulnDuration;
+
+    // 1. Armor absorbs flat damage (min 1 damage)
+    let netDmg = Math.max(1, Math.round(rawDmg - (this.player.armor || 0)));
+
+    // 2. Shield absorbs before Hull
+    if (this.player.shield > 0) {
+      const shieldAbsorb = Math.min(this.player.shield, netDmg);
+      this.player.shield -= shieldAbsorb;
+      netDmg -= shieldAbsorb;
+      this.player.shieldRechargeDelay = 3.5;
+      this.spawnFloatingText(this.player.x, this.player.y - 28, `-${shieldAbsorb} 🛡`, '#38bdf8', 1.25);
+      AudioManager.getInstance().playHit();
+      this.screenShake = 6;
+    }
+
+    // 3. Remaining damage penetrates to Hull
+    if (netDmg > 0) {
+      this.player.hp -= netDmg;
+      this.player.shieldRechargeDelay = 4.0;
+      this.spawnFloatingText(this.player.x, this.player.y - 38, `-${netDmg} HP`, '#f43f5e', 1.3);
+      this.screenShake = 10;
+      AudioManager.getInstance().playHit();
+
+      if (this.player.hp <= 0) {
+        this.player.hp = 0;
+        this.handlePlayerDeath();
+      }
+    }
   }
 
   private handlePlayerDeath(): void {

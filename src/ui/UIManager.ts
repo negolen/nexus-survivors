@@ -55,6 +55,7 @@ export class UIManager {
   // Cached DOM references to eliminate 60FPS per-frame document.getElementById queries
   private hudEls: {
     hpFill: HTMLElement | null;
+    shieldFill: HTMLElement | null;
     hpText: HTMLElement | null;
     xpFill: HTMLElement | null;
     lvlText: HTMLElement | null;
@@ -107,6 +108,7 @@ export class UIManager {
   private cacheHudElements(): void {
     this.hudEls = {
       hpFill: document.getElementById('hud-hp-fill'),
+      shieldFill: document.getElementById('hud-shield-fill'),
       hpText: document.getElementById('hud-hp-text'),
       xpFill: document.getElementById('hud-xp-fill'),
       lvlText: document.getElementById('hud-lvl-text'),
@@ -123,6 +125,7 @@ export class UIManager {
     const save = SaveManager.getInstance().data;
     const p = this.engine.player;
     const hpPct = Math.max(0, Math.min(100, (p.hp / p.maxHp) * 100));
+    const shieldPct = p.maxShield > 0 ? Math.max(0, Math.min(100, (p.shield / p.maxShield) * 100)) : 0;
     const xpPct = Math.max(0, Math.min(100, (p.xp / p.xpToNext) * 100));
     const langLabel = save.language === 'tr' ? '🌐 TR | EN' : '🌐 EN | TR';
 
@@ -131,9 +134,10 @@ export class UIManager {
       return `
       <header class="top-hud in-game-hud">
         <div class="hud-vitals">
-          <div class="hp-bar-wrap" title="HP">
+          <div class="hp-bar-wrap" title="Hull & Shield">
             <div id="hud-hp-fill" class="hp-bar-fill" style="width: ${hpPct}%"></div>
-            <span id="hud-hp-text" class="hp-bar-label">❤ ${Math.ceil(p.hp)} / ${p.maxHp}</span>
+            <div id="hud-shield-fill" class="shield-bar-fill" style="width: ${shieldPct}%; display: ${p.maxShield > 0 ? 'block' : 'none'};"></div>
+            <span id="hud-hp-text" class="hp-bar-label">${p.maxShield > 0 ? `🛡${Math.ceil(p.shield)} ` : ''}❤ ${Math.ceil(p.hp)}/${p.maxHp}</span>
           </div>
           <div class="xp-bar-wrap" title="Level">
             <div id="hud-xp-fill" class="xp-bar-fill" style="width: ${xpPct}%"></div>
@@ -355,7 +359,15 @@ export class UIManager {
     const hpPct = `${Math.max(0, Math.min(100, (p.hp / p.maxHp) * 100))}%`;
     if (els.hpFill.style.width !== hpPct) els.hpFill.style.width = hpPct;
 
-    const hpStr = `HP ${Math.ceil(p.hp)} / ${p.maxHp}`;
+    if (els.shieldFill) {
+      const shieldPct = p.maxShield > 0 ? `${Math.max(0, Math.min(100, (p.shield / p.maxShield) * 100))}%` : '0%';
+      if (els.shieldFill.style.width !== shieldPct) els.shieldFill.style.width = shieldPct;
+      els.shieldFill.style.display = p.maxShield > 0 ? 'block' : 'none';
+    }
+
+    const hpStr = p.maxShield > 0
+      ? `🛡${Math.ceil(p.shield)} ❤${Math.ceil(p.hp)}/${p.maxHp}`
+      : `❤ ${Math.ceil(p.hp)} / ${p.maxHp}`;
     if (els.hpText && els.hpText.textContent !== hpStr) els.hpText.textContent = hpStr;
 
     const xpPct = `${Math.max(0, Math.min(100, (p.xp / p.xpToNext) * 100))}%`;
@@ -429,7 +441,7 @@ export class UIManager {
 
           <div class="workshop-section">
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
-              <h3 style="margin:0;">${isTr ? `⚡ KALICI KOMUTAN GÜÇLENDİRME (MAKS SEVİYE SINIRI: SOLO DALGA ${save.getMaxUpgradeLevelCap()})` : `⚡ PERMANENT COMMANDER UPGRADES (MAX LEVEL CAP: SOLO WAVE ${save.getMaxUpgradeLevelCap()})`}</h3>
+              <h3 style="margin:0;">${isTr ? `⚡ KALICI MEK-GÖVDE NİTELİKLERİ (MAKS SINIR: SOLO DALGA ${save.getMaxUpgradeLevelCap()})` : `⚡ PERMANENT MECH ATTRIBUTES (MAX LEVEL CAP: SOLO WAVE ${save.getMaxUpgradeLevelCap()})`}</h3>
               <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
                 <button id="btn-meta-max-all" class="btn-gold btn-sm pulse-glow" style="padding:6px 12px; font-size:0.8rem;">⚡ ${isTr ? 'TÜMÜNÜ MAX YAP' : 'MAX ALL'}</button>
                 <div style="display:flex; gap:10px; align-items:center; background:rgba(15,23,42,0.9); border:1.5px solid #facc15; padding:6px 14px; border-radius:999px;">
@@ -439,13 +451,17 @@ export class UIManager {
               </div>
             </div>
             <p style="font-size:0.85rem; color:#94a3b8; margin-bottom:10px;">
-              ${isTr ? `Solo (PvE) modda ulaştığınız en yüksek dalga (${d.highestWave}) aynı zamanda geliştirmelerin ve silah birleştirmenin maksimum seviye sınırıdır!` : `Your Highest Solo Wave (${d.highestWave}) sets the maximum level cap for both permanent upgrades and weapon merging!`}
+              ${isTr ? `Solo (PvE) modda ulaştığınız en yüksek dalga (${d.highestWave}) niteliklerin maksimum seviye sınırıdır! Karakterinizin can, kalkan, zırh, hız ve nanit onarım sistemlerini kalıcı olarak geliştirin.` : `Your Highest Solo Wave (${d.highestWave}) sets the level cap! Permanently enhance your mech's Hull, Energy Shield, Armor, Regen, Thruster Speed, and Magnet.`}
             </p>
             <div class="meta-upgrades-grid">
-              ${this.renderMetaUpgradeCard('damageLevel', I18n.t('meta_dmg_title'), I18n.t('meta_dmg_desc'))}
               ${this.renderMetaUpgradeCard('maxHpLevel', I18n.t('meta_hp_title'), I18n.t('meta_hp_desc'))}
-              ${this.renderMetaUpgradeCard('attackSpeedLevel', I18n.t('meta_spd_title'), I18n.t('meta_spd_desc'))}
-              ${this.renderMetaUpgradeCard('startingGoldLevel', I18n.t('meta_gold_title'), I18n.t('meta_gold_desc'))}
+              ${this.renderMetaUpgradeCard('shieldCapacityLevel', I18n.t('meta_shield_title'), I18n.t('meta_shield_desc'))}
+              ${this.renderMetaUpgradeCard('shieldRegenLevel', I18n.t('meta_shield_regen_title'), I18n.t('meta_shield_regen_desc'))}
+              ${this.renderMetaUpgradeCard('armorLevel', I18n.t('meta_armor_title'), I18n.t('meta_armor_desc'))}
+              ${this.renderMetaUpgradeCard('hpRegenLevel', I18n.t('meta_regen_title'), I18n.t('meta_regen_desc'))}
+              ${this.renderMetaUpgradeCard('moveSpeedLevel', I18n.t('meta_speed_title'), I18n.t('meta_speed_desc'))}
+              ${this.renderMetaUpgradeCard('magnetLevel', I18n.t('meta_magnet_title'), I18n.t('meta_magnet_desc'))}
+              ${this.renderMetaUpgradeCard('critChanceLevel', I18n.t('meta_crit_title'), I18n.t('meta_crit_desc'))}
             </div>
           </div>
 
@@ -644,7 +660,7 @@ export class UIManager {
 
   private renderMetaUpgradeCard(key: keyof MetaUpgrades, title: string, desc: string): string {
     const save = SaveManager.getInstance();
-    const lvl = save.data.meta[key];
+    const lvl = save.data.meta[key] ?? 0;
     const maxCap = save.getMaxUpgradeLevelCap();
     const isCapped = lvl >= maxCap;
     const cost = save.getMetaUpgradeCost(key);
