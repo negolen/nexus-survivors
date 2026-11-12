@@ -654,31 +654,40 @@ export class UIManager {
     const isTr = save.data.language === 'tr';
 
     return `
-      <div class="meta-card" style="border-color: ${isCapped ? 'rgba(250,204,21,0.45)' : 'rgba(56,189,248,0.28)'}">
+      <div class="meta-card ${isCapped ? 'capped' : ''}">
         <div class="meta-info">
-          <h4>${title} <span class="lvl-tag">Lv.${lvl} / Max ${maxCap}</span></h4>
+          <h4>
+            <span>${title}</span>
+            <span class="lvl-tag">Lv.${lvl} / Max ${maxCap}</span>
+          </h4>
           <p>${desc}</p>
           ${
             isCapped
-              ? `<small style="color:#facc15; display:block; margin-top:3px; font-weight:700;">${
-                  isTr ? `🔒 Maks Sınır (Solo Dalga ${maxCap + 1}'e ulaşarak artır)` : `🔒 Cap Reached (Reach Solo Wave ${maxCap + 1} to raise)`
-                }</small>`
+              ? `<div class="meta-cap-warn">
+                  🔒 ${isTr ? `Maks Sınır (Solo Dalga ${maxCap + 1}'e ulaş)` : `Cap Reached (Reach Solo Wave ${maxCap + 1})`}
+                </div>`
               : ''
           }
         </div>
-        <div class="meta-actions">
-          <button data-meta-buy="${key}" class="btn-buy btn-meta-single ${canAffordSingle ? '' : 'disabled'}" ${canAffordSingle ? '' : 'disabled'} title="${isTr ? '1 Seviye Artır' : '+1 Level'}">
-            ${isCapped ? (isTr ? 'MAKS' : 'MAX') : `+1 🪙 ${cost.toLocaleString()}`}
-          </button>
-          <button data-meta-max="${key}" class="btn-gold btn-meta-max ${canAffordMax ? '' : 'disabled'}" ${canAffordMax ? '' : 'disabled'} title="${isTr ? 'Maksimum Seviyeye Çıkar' : 'Upgrade to Max Affordable Level'}">
-            ${
-              isCapped
-                ? (isTr ? `MAKS (${maxCap})` : `MAX (${maxCap})`)
-                : maxInfo.levels > 0
-                ? `MAX (+${maxInfo.levels}) 🪙 ${maxInfo.cost.toLocaleString()}`
-                : `MAX (🪙 ${cost.toLocaleString()})`
-            }
-          </button>
+        <div class="meta-actions ${isCapped ? 'is-capped' : ''}">
+          ${
+            isCapped
+              ? `<div class="meta-capped-badge">
+                  🔒 ${isTr ? `MAKS SEVİYE (${lvl}/${maxCap})` : `MAX LEVEL (${lvl}/${maxCap})`}
+                </div>`
+              : `
+                <button data-meta-buy="${key}" class="btn-meta-single ${canAffordSingle ? '' : 'disabled'}" ${canAffordSingle ? '' : 'disabled'} title="${isTr ? '1 Seviye Artır' : '+1 Level'}">
+                  +1 🪙 ${cost.toLocaleString()}
+                </button>
+                <button data-meta-max="${key}" class="btn-meta-max ${canAffordMax ? '' : 'disabled'}" ${canAffordMax ? '' : 'disabled'} title="${isTr ? 'Maksimum Seviyeye Çıkar' : 'Upgrade to Max Affordable Level'}">
+                  ${
+                    maxInfo.levels > 0
+                      ? `MAX (+${maxInfo.levels}) 🪙 ${maxInfo.cost.toLocaleString()}`
+                      : `MAX (🪙 ${cost.toLocaleString()})`
+                  }
+                </button>
+              `
+          }
         </div>
       </div>
     `;
