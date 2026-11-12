@@ -4434,19 +4434,28 @@ void main() {
         ${f}
       </div>
     `}renderMetaUpgradeCard(e,t,n){const i=Le.getInstance(),a=i.data.meta[e],r=i.getMaxUpgradeLevelCap(),o=a>=r,l=i.getMetaUpgradeCost(e),c=!o&&i.data.gold>=l,d=i.getMaxAffordableMeta(e),m=!o&&d.levels>0,h=i.data.language==="tr";return`
-      <div class="meta-card" style="border-color: ${o?"rgba(250,204,21,0.45)":"rgba(56,189,248,0.28)"}">
+      <div class="meta-card ${o?"capped":""}">
         <div class="meta-info">
-          <h4>${t} <span class="lvl-tag">Lv.${a} / Max ${r}</span></h4>
+          <h4>
+            <span>${t}</span>
+            <span class="lvl-tag">Lv.${a} / Max ${r}</span>
+          </h4>
           <p>${n}</p>
-          ${o?`<small style="color:#facc15; display:block; margin-top:3px; font-weight:700;">${h?`🔒 Maks Sınır (Solo Dalga ${r+1}'e ulaşarak artır)`:`🔒 Cap Reached (Reach Solo Wave ${r+1} to raise)`}</small>`:""}
+          ${o?`<div class="meta-cap-warn">
+                  🔒 ${h?`Maks Sınır (Solo Dalga ${r+1}'e ulaş)`:`Cap Reached (Reach Solo Wave ${r+1})`}
+                </div>`:""}
         </div>
-        <div class="meta-actions">
-          <button data-meta-buy="${e}" class="btn-buy btn-meta-single ${c?"":"disabled"}" ${c?"":"disabled"} title="${h?"1 Seviye Artır":"+1 Level"}">
-            ${o?h?"MAKS":"MAX":`+1 🪙 ${l.toLocaleString()}`}
-          </button>
-          <button data-meta-max="${e}" class="btn-gold btn-meta-max ${m?"":"disabled"}" ${m?"":"disabled"} title="${h?"Maksimum Seviyeye Çıkar":"Upgrade to Max Affordable Level"}">
-            ${o?h?`MAKS (${r})`:`MAX (${r})`:d.levels>0?`MAX (+${d.levels}) 🪙 ${d.cost.toLocaleString()}`:`MAX (🪙 ${l.toLocaleString()})`}
-          </button>
+        <div class="meta-actions ${o?"is-capped":""}">
+          ${o?`<div class="meta-capped-badge">
+                  🔒 ${h?`MAKS SEVİYE (${a}/${r})`:`MAX LEVEL (${a}/${r})`}
+                </div>`:`
+                <button data-meta-buy="${e}" class="btn-meta-single ${c?"":"disabled"}" ${c?"":"disabled"} title="${h?"1 Seviye Artır":"+1 Level"}">
+                  +1 🪙 ${l.toLocaleString()}
+                </button>
+                <button data-meta-max="${e}" class="btn-meta-max ${m?"":"disabled"}" ${m?"":"disabled"} title="${h?"Maksimum Seviyeye Çıkar":"Upgrade to Max Affordable Level"}">
+                  ${d.levels>0?`MAX (+${d.levels}) 🪙 ${d.cost.toLocaleString()}`:`MAX (🪙 ${l.toLocaleString()})`}
+                </button>
+              `}
         </div>
       </div>
     `}openLevelUpModal(){const e=[...Wm].sort(()=>Math.random()-.5);this.draftedLevelCards=e.slice(0,3),this.renderLevelUpModal()}renderLevelUpModal(){const e=W.getLang()==="tr";this.uiLayer.innerHTML=`
