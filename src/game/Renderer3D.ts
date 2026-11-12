@@ -116,6 +116,11 @@ export class Renderer3D {
   private floorMat!: THREE.MeshPhysicalMaterial;
   private currentActiveTheme: ConcreteArenaTheme | null = null;
   private themeTextureCache = new Map<ConcreteArenaTheme, { sky: THREE.CanvasTexture; floor: THREE.CanvasTexture }>();
+  private centralObelisk!: THREE.Mesh;
+  private centralGyroRing1!: THREE.Mesh;
+  private centralGyroRing2!: THREE.Mesh;
+  private centralCrystalShards: THREE.Mesh[] = [];
+  private centralBeamMesh!: THREE.Mesh;
   private reactorRings: THREE.Mesh[] = [];
   private reactorPulseRing!: THREE.Mesh;
   private reactorCoreMat!: THREE.MeshBasicMaterial;
@@ -225,14 +230,87 @@ export class Renderer3D {
     this.buildPlayerMech();
     this.buildWeaponDronePods();
 
-    const initialTheme = SaveManager.getInstance().data.selectedTheme || 'auto';
-    this.applyTheme(initialTheme, 1);
+    this.buildThemeProps();
+    this.randomizeTheme();
+    this.resize(window.innerWidth, window.innerHeight);
   }
+
+  /** Mobile / portrait screens get a wider, zoomed-out camera so more of the arena is visible. */
+  private camZoom = 1;
 
   public resize(width: number, height: number): void {
     this.camera.aspect = width / Math.max(1, height);
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(width, height);
+
+    const aspect = width / Math.max(1, height);
+    const shortSide = Math.min(width, height);
+    let zoom = 1;
+    if (aspect < 1) zoom = aspect < 0.62 ? 1.75 : 1.55; // portrait phones / tablets
+    else if (shortSide < 520) zoom = 1.4; // landscape phones
+    else if (width < 1024) zoom = 1.15; // small tablets / laptops
+    this.camZoom = zoom;
+
+    // Widen the shadow frustum so zoomed-out views keep crisp shadows at the edges
+    const s = 620 * zoom;
+    const cam = this.dirLight.shadow.camera;
+    cam.left = -s;
+    cam.right = s;
+    cam.top = s;
+    cam.bottom = -s;
+    cam.far = 1600 * zoom;
+    cam.updateProjectionMatrix();
+  }
+
+  private themeAccent = 0x38bdf8;
+  private themeProps: Partial<Record<ConcreteArenaTheme, THREE.Group>> = {};
+
+  /** Picks a random arena theme (different from the current one). The player never has to choose. */
+  public randomizeTheme(): void {
+    const all: ConcreteArenaTheme[] = ['cyber_nebula', 'solar_inferno', 'cryo_glacier', 'emerald_matrix'];
+    const options = all.filter((t) => t !== this.currentActiveTheme);
+    this.setTheme(options[Math.floor(Math.random() * options.length)]);
+  }
+
+  private setTheme(concrete: ConcreteArenaTheme): void {
+    if (this.currentActiveTheme === concrete) return;
+    this.currentActiveTheme = concrete;
+
+    const textures = this.getThemeTextures(concrete);
+    const cfg = THEME_PROFILES[concrete];
+    this.themeAccent = cfg.accentColor;
+
+    this.scene.background = textures.sky;
+    if (this.scene.fog instanceof THREE.FogExp2) {
+      this.scene.fog.color.setHex(cfg.fogColor);
+    }
+    this.hemiLight.color.setHex(cfg.hemiSky);
+    this.hemiLight.groundColor.setHex(cfg.hemiGround);
+
+    this.floorMat.map = textures.floor;
+    this.floorMat.bumpMap = textures.floor;
+    this.floorMat.emissiveMap = textures.floor;
+    this.floorMat.color.setHex(cfg.floorColor);
+    this.floorMat.emissive.setHex(cfg.floorEmissive);
+    this.floorMat.needsUpdate = true;
+
+    this.barrierBeamMat.color.setHex(cfg.accentColor);
+    this.reactorCoreMat.color.setHex(cfg.accentColor);
+    (this.dustPoints.material as THREE.PointsMaterial).color.setHex(cfg.accentColor);
+
+    if (this.centralBeamMesh) {
+      (this.centralBeamMesh.material as THREE.MeshBasicMaterial).color.setHex(cfg.accentColor);
+    }
+    if (this.centralGyroRing1) {
+      (this.centralGyroRing1.material as THREE.MeshBasicMaterial).color.setHex(cfg.accentColor);
+    }
+    if (this.centralObelisk && (this.centralObelisk.material as THREE.MeshPhysicalMaterial)) {
+      (this.centralObelisk.material as THREE.MeshPhysicalMaterial).emissive.setHex(cfg.accentColor);
+    }
+
+    for (const key of Object.keys(this.themeProps) as ConcreteArenaTheme[]) {
+      this.themeProps[key]!.visible = key === concrete;
+    }
   }
 
   private createSciFiArmorTexture(): THREE.CanvasTexture {
@@ -274,49 +352,6 @@ export class Renderer3D {
     return tex;
   }
 
-  public applyTheme(themeId: ArenaThemeId, wave: number = 1): void {
-    let concrete: ConcreteArenaTheme;
-    if (themeId === 'auto') {
-      const cycle: ConcreteArenaTheme[] = ['cyber_nebula', 'solar_inferno', 'cryo_glacier', 'emerald_matrix'];
-      const idx = Math.floor(Math.max(0, wave - 1) / 5) % cycle.length;
-      concrete = cycle[idx];
-    } else {
-      concrete = themeId;
-    }
-
-    if (this.currentActiveTheme === concrete && this.scene.background) return;
-    this.currentActiveTheme = concrete;
-
-    const textures = this.getThemeTextures(concrete);
-    const cfg = THEME_PROFILES[concrete];
-
-    this.scene.background = textures.sky;
-    if (this.scene.fog instanceof THREE.FogExp2) {
-      this.scene.fog.color.setHex(cfg.fogColor);
-    }
-    if (this.hemiLight) {
-      this.hemiLight.color.setHex(cfg.hemiSky);
-      this.hemiLight.groundColor.setHex(cfg.hemiGround);
-    }
-    if (this.floorMat) {
-      this.floorMat.map = textures.floor;
-      this.floorMat.bumpMap = textures.floor;
-      this.floorMat.emissiveMap = textures.floor;
-      this.floorMat.color.setHex(cfg.floorColor);
-      this.floorMat.emissive.setHex(cfg.floorEmissive);
-      this.floorMat.needsUpdate = true;
-    }
-    if (this.barrierBeamMat) {
-      this.barrierBeamMat.color.setHex(cfg.accentColor);
-    }
-    if (this.reactorCoreMat) {
-      this.reactorCoreMat.color.setHex(cfg.accentColor);
-    }
-    if (this.dustPoints && (this.dustPoints.material as THREE.PointsMaterial)) {
-      (this.dustPoints.material as THREE.PointsMaterial).color.setHex(cfg.accentColor);
-    }
-  }
-
   private getThemeTextures(theme: ConcreteArenaTheme): { sky: THREE.CanvasTexture; floor: THREE.CanvasTexture } {
     const cached = this.themeTextureCache.get(theme);
     if (cached) return cached;
@@ -334,86 +369,140 @@ export class Renderer3D {
     canvas.height = 1024;
     const ctx = canvas.getContext('2d')!;
 
+    // 1. Base atmospheric vertical gradient
     const grad = ctx.createLinearGradient(0, 0, 0, 1024);
     if (theme === 'solar_inferno') {
-      grad.addColorStop(0, '#1c0505');
-      grad.addColorStop(0.4, '#581309');
-      grad.addColorStop(0.72, '#a3360b');
-      grad.addColorStop(1, '#f97316');
+      grad.addColorStop(0, '#150303');
+      grad.addColorStop(0.35, '#450d06');
+      grad.addColorStop(0.68, '#8c2808');
+      grad.addColorStop(0.9, '#dc5c12');
+      grad.addColorStop(1, '#fba338');
     } else if (theme === 'cryo_glacier') {
-      grad.addColorStop(0, '#03111f');
-      grad.addColorStop(0.4, '#07364d');
-      grad.addColorStop(0.75, '#0e7490');
+      grad.addColorStop(0, '#020b14');
+      grad.addColorStop(0.35, '#052738');
+      grad.addColorStop(0.65, '#08536b');
+      grad.addColorStop(0.88, '#148ea8');
       grad.addColorStop(1, '#67e8f9');
     } else if (theme === 'emerald_matrix') {
-      grad.addColorStop(0, '#02160c');
-      grad.addColorStop(0.4, '#064227');
-      grad.addColorStop(0.75, '#047857');
-      grad.addColorStop(1, '#34d399');
+      grad.addColorStop(0, '#010f08');
+      grad.addColorStop(0.35, '#03331e');
+      grad.addColorStop(0.68, '#065f3e');
+      grad.addColorStop(0.9, '#0ea367');
+      grad.addColorStop(1, '#4ade80');
     } else {
       // cyber_nebula
-      grad.addColorStop(0, '#0b0f3a');
-      grad.addColorStop(0.45, '#3b1a6e');
-      grad.addColorStop(0.75, '#a3318f');
-      grad.addColorStop(1, '#ff7a59');
+      grad.addColorStop(0, '#070b28');
+      grad.addColorStop(0.32, '#241047');
+      grad.addColorStop(0.65, '#6b1c78');
+      grad.addColorStop(0.88, '#b83280');
+      grad.addColorStop(1, '#f97316');
     }
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, 1024, 1024);
 
+    // 2. Multi-Layer Cosmic Dust Clouds & Luminous Nebulae
     let blobs: Array<[number, number, number, string]>;
     if (theme === 'solar_inferno') {
       blobs = [
-        [240, 280, 280, 'rgba(249,115,22,0.45)'],
-        [750, 260, 300, 'rgba(239,68,68,0.42)'],
-        [500, 650, 320, 'rgba(251,146,60,0.35)'],
-        [820, 680, 260, 'rgba(245,158,11,0.32)']
+        [320, 260, 360, 'rgba(249,115,22,0.48)'],
+        [780, 220, 380, 'rgba(239,68,68,0.45)'],
+        [512, 600, 420, 'rgba(251,146,60,0.38)'],
+        [180, 720, 320, 'rgba(220,38,38,0.32)'],
+        [880, 750, 300, 'rgba(245,158,11,0.36)']
       ];
     } else if (theme === 'cryo_glacier') {
       blobs = [
-        [220, 280, 260, 'rgba(34,211,238,0.45)'],
-        [720, 240, 300, 'rgba(6,182,212,0.4)'],
-        [520, 620, 320, 'rgba(103,232,249,0.32)'],
-        [850, 690, 250, 'rgba(165,243,252,0.28)']
+        [240, 260, 380, 'rgba(34,211,238,0.48)'],
+        [740, 200, 400, 'rgba(6,182,212,0.44)'],
+        [512, 580, 420, 'rgba(56,189,248,0.36)'],
+        [880, 720, 320, 'rgba(165,243,252,0.32)'],
+        [150, 740, 300, 'rgba(14,165,233,0.35)']
       ];
     } else if (theme === 'emerald_matrix') {
       blobs = [
-        [220, 300, 260, 'rgba(34,197,94,0.45)'],
-        [760, 240, 300, 'rgba(16,185,129,0.42)'],
-        [500, 640, 340, 'rgba(74,222,128,0.3)'],
-        [840, 690, 260, 'rgba(5,150,105,0.35)']
+        [260, 280, 380, 'rgba(34,197,94,0.48)'],
+        [780, 220, 400, 'rgba(16,185,129,0.44)'],
+        [512, 600, 420, 'rgba(74,222,128,0.36)'],
+        [880, 700, 320, 'rgba(5,150,105,0.38)'],
+        [160, 740, 300, 'rgba(52,211,153,0.32)']
       ];
     } else {
       blobs = [
-        [220, 300, 260, 'rgba(56,189,248,0.35)'],
-        [760, 220, 300, 'rgba(168,85,247,0.38)'],
-        [520, 620, 340, 'rgba(236,72,153,0.28)'],
-        [860, 700, 240, 'rgba(34,211,238,0.25)']
+        [240, 260, 380, 'rgba(56,189,248,0.42)'],
+        [780, 200, 420, 'rgba(168,85,247,0.46)'],
+        [512, 580, 440, 'rgba(236,72,153,0.36)'],
+        [160, 720, 320, 'rgba(34,211,238,0.32)'],
+        [880, 740, 320, 'rgba(192,132,252,0.35)']
       ];
     }
 
     for (const [bx, by, br, col] of blobs) {
-      const g = ctx.createRadialGradient(bx, by, 10, bx, by, br);
+      const g = ctx.createRadialGradient(bx, by, 15, bx, by, br);
       g.addColorStop(0, col);
+      g.addColorStop(0.65, col.replace(/[\d\.]+\)$/, '0.14)'));
       g.addColorStop(1, 'rgba(0,0,0,0)');
       ctx.fillStyle = g;
       ctx.fillRect(0, 0, 1024, 1024);
     }
 
-    if (theme === 'emerald_matrix') {
+    // 3. Theme-Specific Hero Features
+    if (theme === 'solar_inferno') {
+      ctx.strokeStyle = 'rgba(254,240,138,0.38)';
+      ctx.lineWidth = 14;
+      ctx.beginPath();
+      ctx.arc(512, 950, 420, Math.PI * 1.15, Math.PI * 1.85);
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(249,115,22,0.55)';
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      ctx.arc(512, 950, 420, Math.PI * 1.15, Math.PI * 1.85);
+      ctx.stroke();
+    } else if (theme === 'cryo_glacier') {
+      for (let j = 0; j < 3; j++) {
+        ctx.strokeStyle = j === 1 ? 'rgba(34,211,238,0.35)' : 'rgba(74,222,128,0.22)';
+        ctx.lineWidth = 18 + j * 8;
+        ctx.beginPath();
+        ctx.moveTo(0, 240 + j * 90);
+        ctx.bezierCurveTo(340, 160 + j * 80, 680, 320 + j * 90, 1024, 210 + j * 80);
+        ctx.stroke();
+      }
+    } else if (theme === 'emerald_matrix') {
       ctx.fillStyle = '#86efac';
-      for (let col = 20; col < 1024; col += 38) {
-        const startY = Math.random() * 380;
-        const len = 120 + Math.random() * 260;
-        for (let y = startY; y < startY + len; y += 14) {
-          ctx.globalAlpha = Math.random() * 0.85;
+      for (let col = 16; col < 1024; col += 32) {
+        const startY = Math.random() * 320;
+        const len = 140 + Math.random() * 320;
+        for (let y = startY; y < startY + len; y += 12) {
+          ctx.globalAlpha = 0.2 + Math.random() * 0.75;
           ctx.fillRect(col, y, 2.5, 6);
         }
       }
     } else {
-      ctx.fillStyle = theme === 'solar_inferno' ? '#fef08a' : '#ffffff';
-      for (let i = 0; i < 260; i++) {
-        ctx.globalAlpha = 0.3 + Math.random() * 0.7;
-        ctx.fillRect(Math.random() * 1024, Math.random() * 700, 1.8, 1.8);
+      ctx.strokeStyle = 'rgba(168,85,247,0.32)';
+      ctx.lineWidth = 8;
+      ctx.beginPath();
+      ctx.ellipse(512, 820, 520, 110, -0.08, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(56,189,248,0.45)';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.ellipse(512, 820, 490, 95, -0.08, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // 4. Stellar Field: Glistening Stars with soft halos
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = theme === 'solar_inferno' ? '#fef08a' : theme === 'emerald_matrix' ? '#86efac' : '#ffffff';
+    for (let i = 0; i < 340; i++) {
+      const sx = Math.random() * 1024;
+      const sy = Math.random() * 850;
+      const sz = Math.random() < 0.08 ? 3.2 : Math.random() < 0.25 ? 2.2 : 1.4;
+      ctx.globalAlpha = 0.35 + Math.random() * 0.65;
+      ctx.fillRect(sx, sy, sz, sz);
+      if (sz > 2.5) {
+        ctx.fillStyle = 'rgba(255,255,255,0.4)';
+        ctx.fillRect(sx - 2, sy, sz + 4, 1);
+        ctx.fillRect(sx, sy - 2, 1, sz + 4);
+        ctx.fillStyle = theme === 'solar_inferno' ? '#fef08a' : '#ffffff';
       }
     }
     ctx.globalAlpha = 1;
@@ -598,35 +687,83 @@ export class Renderer3D {
     gridMajor.position.set(half, 0.3, half);
     this.scene.add(gridFine, gridMajor);
 
-    // 3. Central Nexus Reactor Core on Arena Floor
+    // 3. Central Quantum Nexus Spire & Gyro Rings (Replaces flat concentric circles)
     this.reactorCoreMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
-    const coreHub = new THREE.Mesh(new THREE.CylinderGeometry(45, 55, 4, 24), this.reactorCoreMat);
-    coreHub.position.set(half, 1, half);
-    this.scene.add(coreHub);
 
-    const ringRadii = [78, 125, 175];
-    ringRadii.forEach((r, idx) => {
-      const rGeo = new THREE.RingGeometry(r - 4, r, idx === 1 ? 6 : 36);
-      rGeo.rotateX(-Math.PI / 2);
-      const rMat = new THREE.MeshBasicMaterial({
-        color: idx % 2 === 0 ? 0x38bdf8 : 0xa855f7,
-        side: THREE.DoubleSide,
-        transparent: true,
-        opacity: 0.78
-      });
-      const rMesh = new THREE.Mesh(rGeo, rMat);
-      rMesh.position.set(half, 0.6 + idx * 0.2, half);
-      this.scene.add(rMesh);
-      this.reactorRings.push(rMesh);
+    // Hexagonal cyber pedestal on floor
+    const pedGeo = new THREE.CylinderGeometry(36, 46, 6, 6);
+    const pedMat = new THREE.MeshPhysicalMaterial({
+      color: 0x0f172a,
+      emissive: 0x0284c7,
+      emissiveIntensity: 0.5,
+      metalness: 0.9,
+      roughness: 0.2
     });
+    const pedestal = new THREE.Mesh(pedGeo, pedMat);
+    pedestal.position.set(half, 3, half);
+    this.scene.add(pedestal);
 
-    const pulseGeo = new THREE.RingGeometry(24, 30, 48);
+    // Glowing energy core inside base
+    const coreGlow = new THREE.Mesh(new THREE.CylinderGeometry(20, 20, 7, 12), this.reactorCoreMat);
+    coreGlow.position.set(half, 3.5, half);
+    this.scene.add(coreGlow);
+
+    // Floating Quantum Obelisk Spire (Hovering at Y = 55)
+    const obeliskGeo = new THREE.OctahedronGeometry(18, 0);
+    obeliskGeo.scale(1, 2.6, 1);
+    const obeliskMat = new THREE.MeshPhysicalMaterial({
+      color: 0x0284c7,
+      emissive: 0x38bdf8,
+      emissiveIntensity: 0.75,
+      metalness: 0.85,
+      roughness: 0.15,
+      clearcoat: 1.0,
+      clearcoatRoughness: 0.1
+    });
+    this.centralObelisk = new THREE.Mesh(obeliskGeo, obeliskMat);
+    this.centralObelisk.position.set(half, 55, half);
+    this.scene.add(this.centralObelisk);
+
+    // 2 Gyroscopic Holographic Energy Rings orbiting the floating obelisk
+    const gyroGeo1 = new THREE.TorusGeometry(32, 1.8, 16, 48);
+    const gyroMat1 = new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.85 });
+    this.centralGyroRing1 = new THREE.Mesh(gyroGeo1, gyroMat1);
+    this.centralGyroRing1.position.set(half, 55, half);
+    this.scene.add(this.centralGyroRing1);
+
+    const gyroGeo2 = new THREE.TorusGeometry(40, 1.6, 16, 48);
+    const gyroMat2 = new THREE.MeshBasicMaterial({ color: 0xa855f7, transparent: true, opacity: 0.8 });
+    this.centralGyroRing2 = new THREE.Mesh(gyroGeo2, gyroMat2);
+    this.centralGyroRing2.position.set(half, 55, half);
+    this.scene.add(this.centralGyroRing2);
+
+    // 4 Floating orbiting crystal shards
+    const shardGeo = new THREE.OctahedronGeometry(5, 0);
+    shardGeo.scale(0.8, 2, 0.8);
+    const shardMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.9 });
+    for (let i = 0; i < 4; i++) {
+      const shard = new THREE.Mesh(shardGeo, shardMat);
+      this.centralCrystalShards.push(shard);
+      this.scene.add(shard);
+    }
+
+    // Skyward Quantum Light Pillar
+    const beamGeo = new THREE.CylinderGeometry(4, 18, 800, 16, 1, true);
+    this.centralBeamMesh = new THREE.Mesh(
+      beamGeo,
+      new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.22, side: THREE.DoubleSide })
+    );
+    this.centralBeamMesh.position.set(half, 400, half);
+    this.scene.add(this.centralBeamMesh);
+
+    // Ground wave pulse ring
+    const pulseGeo = new THREE.RingGeometry(18, 24, 32);
     pulseGeo.rotateX(-Math.PI / 2);
     this.reactorPulseRing = new THREE.Mesh(
       pulseGeo,
-      new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.8, side: THREE.DoubleSide })
+      new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.75, side: THREE.DoubleSide })
     );
-    this.reactorPulseRing.position.set(half, 1.2, half);
+    this.reactorPulseRing.position.set(half, 1.5, half);
     this.scene.add(this.reactorPulseRing);
 
     // 4. Multi-Beam Laser Barrier Walls & Corner Tesla Pylons
@@ -1029,6 +1166,68 @@ export class Renderer3D {
     }
   }
 
+  private buildThemeProps(): void {
+    const half = this.worldSize / 2;
+    const themes: ConcreteArenaTheme[] = ['cyber_nebula', 'solar_inferno', 'cryo_glacier', 'emerald_matrix'];
+    for (const t of themes) {
+      const grp = new THREE.Group();
+      grp.visible = false;
+      this.themeProps[t] = grp;
+      this.scene.add(grp);
+
+      if (t === 'solar_inferno') {
+        const spikeGeo = new THREE.ConeGeometry(14, 75, 5);
+        const spikeMat = new THREE.MeshPhysicalMaterial({ color: 0x1f0b08, emissive: 0xf97316, emissiveIntensity: 0.65 });
+        for (let i = 0; i < 12; i++) {
+          const ang = (i / 12) * Math.PI * 2 + 0.2;
+          const dist = 780 + (i % 3) * 120;
+          const sp = new THREE.Mesh(spikeGeo, spikeMat);
+          sp.position.set(half + Math.cos(ang) * dist, 37, half + Math.sin(ang) * dist);
+          sp.scale.set(1 + (i % 2) * 0.4, 1 + (i % 3) * 0.3, 1 + (i % 2) * 0.4);
+          grp.add(sp);
+        }
+      } else if (t === 'cryo_glacier') {
+        const iceGeo = new THREE.OctahedronGeometry(12, 0);
+        iceGeo.scale(1, 3.2, 1);
+        const iceMat = new THREE.MeshPhysicalMaterial({
+          color: 0xa5f3fc,
+          emissive: 0x06b6d4,
+          emissiveIntensity: 0.6,
+          roughness: 0.1,
+          metalness: 0.2
+        });
+        for (let i = 0; i < 12; i++) {
+          const ang = (i / 12) * Math.PI * 2 + 0.3;
+          const dist = 760 + (i % 2) * 150;
+          const ice = new THREE.Mesh(iceGeo, iceMat);
+          ice.position.set(half + Math.cos(ang) * dist, 38, half + Math.sin(ang) * dist);
+          ice.rotation.z = ((i % 3) - 1) * 0.2;
+          grp.add(ice);
+        }
+      } else if (t === 'emerald_matrix') {
+        const colGeo = new THREE.BoxGeometry(16, 95, 16);
+        const colMat = new THREE.MeshPhysicalMaterial({ color: 0x062816, emissive: 0x22c55e, emissiveIntensity: 0.7 });
+        for (let i = 0; i < 12; i++) {
+          const ang = (i / 12) * Math.PI * 2 + 0.1;
+          const dist = 800 + (i % 2) * 100;
+          const col = new THREE.Mesh(colGeo, colMat);
+          col.position.set(half + Math.cos(ang) * dist, 47.5, half + Math.sin(ang) * dist);
+          grp.add(col);
+        }
+      } else {
+        const beaconGeo = new THREE.CylinderGeometry(4, 10, 85, 8);
+        const beaconMat = new THREE.MeshPhysicalMaterial({ color: 0x1b2b4a, emissive: 0xa855f7, emissiveIntensity: 0.7 });
+        for (let i = 0; i < 12; i++) {
+          const ang = (i / 12) * Math.PI * 2;
+          const dist = 800 + (i % 3) * 100;
+          const b = new THREE.Mesh(beaconGeo, beaconMat);
+          b.position.set(half + Math.cos(ang) * dist, 42.5, half + Math.sin(ang) * dist);
+          grp.add(b);
+        }
+      }
+    }
+  }
+
   public worldToScreen(
     worldX: number,
     worldY: number,
@@ -1078,14 +1277,47 @@ export class Renderer3D {
     this.camTarget.x += (player.x - this.camTarget.x) * 0.18;
     this.camTarget.z += (player.y - this.camTarget.z) * 0.18;
 
-    this.camera.position.set(this.camTarget.x + shakeX, 530, this.camTarget.z + 430 + shakeZ);
+    const camH = 530 * this.camZoom;
+    const camDist = 430 * this.camZoom;
+    this.camera.position.set(this.camTarget.x + shakeX, camH, this.camTarget.z + camDist + shakeZ);
     this.camera.lookAt(this.camTarget.x + shakeX * 0.3, 0, this.camTarget.z + shakeZ * 0.3);
 
-    this.dirLight.position.set(this.camTarget.x + 280, 780, this.camTarget.z + 240);
+    this.dirLight.position.set(this.camTarget.x + 280, 780 * this.camZoom, this.camTarget.z + 240);
     this.dirLight.target.position.set(this.camTarget.x, 0, this.camTarget.z);
     this.dirLight.target.updateMatrixWorld();
 
-    // 2. Environment Animations & Boss Red-Alert Atmosphere
+    // 2. Central Quantum Nexus Obelisk & Hovering Gyro Rings Animation
+    const half = this.worldSize / 2;
+    if (this.centralObelisk) {
+      this.centralObelisk.position.y = 55 + Math.sin(now * 2) * 5;
+      this.centralObelisk.rotation.y = now * 0.8;
+      this.centralObelisk.rotation.z = Math.sin(now * 1.5) * 0.12;
+    }
+    if (this.centralGyroRing1) {
+      this.centralGyroRing1.position.y = 55 + Math.sin(now * 2) * 5;
+      this.centralGyroRing1.rotation.x = now * 1.4;
+      this.centralGyroRing1.rotation.y = now * 1.1;
+    }
+    if (this.centralGyroRing2) {
+      this.centralGyroRing2.position.y = 55 + Math.sin(now * 2) * 5;
+      this.centralGyroRing2.rotation.y = -now * 1.2;
+      this.centralGyroRing2.rotation.z = now * 0.9;
+    }
+    const shardOrbitR = 52;
+    for (let i = 0; i < this.centralCrystalShards.length; i++) {
+      const s = this.centralCrystalShards[i];
+      const sa = now * 1.5 + (i * Math.PI) / 2;
+      s.position.set(
+        half + Math.cos(sa) * shardOrbitR,
+        52 + Math.sin(now * 3 + i) * 6,
+        half + Math.sin(sa) * shardOrbitR
+      );
+      s.rotation.y = now * 2;
+    }
+    if (this.centralBeamMesh) {
+      (this.centralBeamMesh.material as THREE.MeshBasicMaterial).opacity = 0.18 + Math.sin(now * 3) * 0.08;
+    }
+
     this.reactorRings.forEach((r, idx) => {
       r.rotation.z = now * (idx % 2 === 0 ? 0.45 : -0.65);
     });

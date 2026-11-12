@@ -1,6 +1,6 @@
 import { AudioManager } from '../core/AudioManager';
 import { I18n } from '../core/I18n';
-import { ArenaThemeId, CommanderId, CrateLootResult, MetaUpgrades, MissionTiers, SaveManager } from '../core/SaveManager';
+import { CommanderId, CrateLootResult, MetaUpgrades, MissionTiers, SaveManager } from '../core/SaveManager';
 import { GameEngine, TACTICAL_CARDS_POOL, TacticalCard } from '../game/GameEngine';
 import {
   TIER_COLORS,
@@ -49,6 +49,7 @@ export class UIManager {
   private shopOffers: ShopOffer[] = [];
   private draftedLevelCards: TacticalCard[] = [];
   private waveBonusDoubled = false;
+  private reopenPauseAfterModal = false;
   private showDevMetrics = typeof window !== 'undefined' && window.location.search.includes('dev=1');
 
   // Cached DOM references to eliminate 60FPS per-frame document.getElementById queries
@@ -78,7 +79,13 @@ export class UIManager {
 
     SaveManager.getInstance().onChange(() => this.updateTopHudValues());
 
+    window.addEventListener('resize', () => this.syncHudBottom());
+
     window.addEventListener('keydown', (e) => {
+      if (e.code === 'Escape' || e.code === 'KeyP') {
+        this.togglePauseMenu();
+        return;
+      }
       if (e.code === 'F9') {
         this.showDevMetrics = !this.showDevMetrics;
         const revPill = document.getElementById('hud-rev');
@@ -111,111 +118,58 @@ export class UIManager {
     };
   }
 
-  private getThemeHudLabel(theme?: ArenaThemeId): string {
-    const t = theme || SaveManager.getInstance().data.selectedTheme || 'auto';
-    switch (t) {
-      case 'cyber_nebula': return '🌌 NEBULA';
-      case 'solar_inferno': return '🔥 INFERNO';
-      case 'cryo_glacier': return '❄️ CRYO';
-      case 'emerald_matrix': return '🟩 MATRIX';
-      default: return '🔄 AUTO';
-    }
-  }
-
   private renderTopHud(): string {
     const save = SaveManager.getInstance().data;
     const p = this.engine.player;
     const hpPct = Math.max(0, Math.min(100, (p.hp / p.maxHp) * 100));
     const xpPct = Math.max(0, Math.min(100, (p.xp / p.xpToNext) * 100));
-    const isSpeed2x = this.engine.gameSpeedMultiplier === 2;
     const langLabel = save.language === 'tr' ? '🌐 TR | EN' : '🌐 EN | TR';
-    const isMenu = this.engine.state === 'MENU';
 
-    // 1. IN-GAME COMBAT HUD (Solo & Arena PvP Royale): Strictly 1 line, sleek, mobile-optimized
-    if (!isMenu) {
+    // 1. IN-GAME COMBAT HUD: only HP, Level, Wave, Gold, Gems + a single ☰ menu button
+    if (this.engine.state !== 'MENU') {
       return `
       <header class="top-hud in-game-hud">
-        <div class="hud-left">
-          <div class="hp-bar-wrap" title="Hull Integrity">
+        <div class="hud-vitals">
+          <div class="hp-bar-wrap" title="HP">
             <div id="hud-hp-fill" class="hp-bar-fill" style="width: ${hpPct}%"></div>
-            <span id="hud-hp-text" class="hp-bar-label">${Math.ceil(p.hp)} / ${p.maxHp}</span>
+            <span id="hud-hp-text" class="hp-bar-label">❤ ${Math.ceil(p.hp)} / ${p.maxHp}</span>
           </div>
-          <div class="xp-bar-wrap" title="Tactical Level Progress">
+          <div class="xp-bar-wrap" title="Level">
             <div id="hud-xp-fill" class="xp-bar-fill" style="width: ${xpPct}%"></div>
             <span id="hud-lvl-text" class="hp-bar-label">${I18n.t('lvl_label')} ${p.level}</span>
           </div>
         </div>
-
-        <div class="hud-center">
+        <div class="hud-stats">
           <div class="wave-pill">
             <span id="hud-wave-num">${I18n.t('wave_label')} ${this.engine.currentWave}</span>
             <strong id="hud-wave-timer">${Math.ceil(this.engine.waveTimer)}s</strong>
           </div>
-          <div class="currency-pill gold-pill">
-            <span>🪙</span>
-            <strong id="hud-gold">${save.gold.toLocaleString()}</strong>
-          </div>
-          <div class="currency-pill gem-pill hide-on-tiny">
-            <span>💎</span>
-            <strong id="hud-gems">${save.gems.toLocaleString()}</strong>
-          </div>
+          <div class="currency-pill gold-pill"><span>🪙</span><strong id="hud-gold">${save.gold.toLocaleString()}</strong></div>
+          <div class="currency-pill gem-pill"><span>💎</span><strong id="hud-gems">${save.gems.toLocaleString()}</strong></div>
         </div>
-
-        <div class="hud-right">
-          <button id="btn-speed-toggle" class="btn-hud ${isSpeed2x ? 'active-speed' : ''}" title="Toggle Turbo Speed (1x / 2x)">
-            ${isSpeed2x ? '⚡ 2x' : '⚡ 1x'}
-          </button>
-          <button id="btn-sound-toggle" class="btn-hud" title="Audio Mute Toggle">
-            ${save.soundEnabled ? '🔊' : '🔇'}
-          </button>
-          <button id="btn-hud-home" class="btn-hud btn-hud-home" title="Return to Main Menu (Auto-saves progress)">
-            🏠 <span class="hide-on-mobile">${I18n.t('btn_main_menu')}</span>
-          </button>
-        </div>
+        <button id="btn-pause-menu" class="btn-hud btn-menu-burger" title="Menu (Esc)" aria-label="Menu">☰</button>
       </header>
       `;
     }
 
-    // 2. MAIN MENU TOP HUD: Full desktop/mobile management bar
+    // 2. MAIN MENU TOP HUD
     return `
       <header class="top-hud menu-hud">
         <div class="hud-left">
-          <div class="currency-pill gold-pill">
-            <span>🪙</span>
-            <strong id="hud-gold">${save.gold.toLocaleString()}</strong>
-          </div>
-          <div class="currency-pill gem-pill">
-            <span>💎</span>
-            <strong id="hud-gems">${save.gems.toLocaleString()}</strong>
-          </div>
+          <div class="currency-pill gold-pill"><span>🪙</span><strong id="hud-gold">${save.gold.toLocaleString()}</strong></div>
+          <div class="currency-pill gem-pill"><span>💎</span><strong id="hud-gems">${save.gems.toLocaleString()}</strong></div>
           <div id="hud-rev" class="currency-pill revenue-pill" style="display: ${this.showDevMetrics ? 'flex' : 'none'}" title="Developer Revenue Tracker (Toggle with F9 or ?dev=1)">
             <span>📈 REV:</span>
             <strong id="hud-revenue">$${save.totalRevenueSimulated.toFixed(2)}</strong>
           </div>
         </div>
-
         <div class="hud-right">
-          <button id="btn-theme-toggle" class="btn-hud" title="Switch Arena Visual Theme">
-            🎨 ${this.getThemeHudLabel(save.selectedTheme)}
-          </button>
-          <button id="btn-open-crates" class="btn-hud">
-            🎁 ${I18n.t('hud_crates_btn')}
-          </button>
-          <button id="btn-open-missions" class="btn-hud">
-            📋 ${I18n.t('hud_missions_btn')}
-          </button>
-          <button id="btn-open-ranks" class="btn-hud">
-            🏆 ${I18n.t('hud_ranks_btn')}
-          </button>
-          <button id="btn-open-store" class="btn-hud btn-vip">
-            💎 ${I18n.t('vip_store_btn')}
-          </button>
-          <button id="btn-lang-toggle" class="btn-hud" title="Switch Language (Default: English)">
-            ${langLabel}
-          </button>
-          <button id="btn-sound-toggle" class="btn-hud">
-            ${save.soundEnabled ? '🔊' : '🔇'}
-          </button>
+          <button id="btn-open-crates" class="btn-hud">🎁 ${I18n.t('hud_crates_btn')}</button>
+          <button id="btn-open-missions" class="btn-hud">📋 ${I18n.t('hud_missions_btn')}</button>
+          <button id="btn-open-ranks" class="btn-hud">🏆 ${I18n.t('hud_ranks_btn')}</button>
+          <button id="btn-open-store" class="btn-hud btn-vip">💎 ${I18n.t('vip_store_btn')}</button>
+          <button id="btn-lang-toggle" class="btn-hud" title="Switch Language (Default: English)">${langLabel}</button>
+          <button id="btn-sound-toggle" class="btn-hud">${save.soundEnabled ? '🔊' : '🔇'}</button>
         </div>
       </header>
     `;
@@ -223,66 +177,27 @@ export class UIManager {
 
   private bindTopHudEvents(): void {
     this.cacheHudElements();
+    this.syncHudBottom();
 
-    document.getElementById('btn-hud-home')?.addEventListener('click', () => {
+    document.getElementById('btn-pause-menu')?.addEventListener('click', () => {
       AudioManager.getInstance().playClick();
-      SaveManager.getInstance().recordRunStats(this.engine.currentWave, this.engine.runScore);
-      this.engine.saveCheckpointOnExit();
-      this.engine.state = 'MENU';
-      this.renderMainMenu();
+      this.openPauseMenu();
     });
 
-    document.getElementById('btn-speed-toggle')?.addEventListener('click', async () => {
-      AudioManager.getInstance().playClick();
-      const save = SaveManager.getInstance();
-
-      if (this.engine.gameSpeedMultiplier === 2) {
-        this.engine.gameSpeedMultiplier = 1;
-        this.updateTopHudValues();
-        return;
-      }
-
-      if (save.data.vipUnlocked || this.engine.tempAdSpeedWave) {
-        this.engine.gameSpeedMultiplier = 2;
-        this.updateTopHudValues();
-      } else {
-        const watched = await MonetizationManager.getInstance().showRewardedAd('Unlock 2x Turbo Speed (Current Wave)');
-        if (watched) {
-          this.engine.tempAdSpeedWave = true;
-          this.engine.gameSpeedMultiplier = 2;
-          this.updateTopHudValues();
-        }
-      }
-    });
-
-    document.getElementById('btn-open-crates')?.addEventListener('click', () => {
-      AudioManager.getInstance().playClick();
-      this.openCratesModal();
-    });
-
-    document.getElementById('btn-open-missions')?.addEventListener('click', () => {
-      AudioManager.getInstance().playClick();
-      this.openMissionsModal();
-    });
-
-    document.getElementById('btn-open-ranks')?.addEventListener('click', () => {
-      AudioManager.getInstance().playClick();
-      this.openLeaderboardModal();
-    });
-
-    document.getElementById('btn-open-store')?.addEventListener('click', () => {
-      AudioManager.getInstance().playClick();
-      this.openStoreModal();
-    });
+    const sub = (id: string, fn: () => void) =>
+      document.getElementById(id)?.addEventListener('click', () => {
+        AudioManager.getInstance().playClick();
+        fn();
+      });
+    sub('btn-open-crates', () => this.openCratesModal());
+    sub('btn-open-missions', () => this.openMissionsModal());
+    sub('btn-open-ranks', () => this.openLeaderboardModal());
+    sub('btn-open-store', () => this.openStoreModal());
 
     document.getElementById('btn-lang-toggle')?.addEventListener('click', () => {
       AudioManager.getInstance().playClick();
       SaveManager.getInstance().toggleLanguage();
-      if (this.engine.state === 'MENU') this.renderMainMenu();
-      else if (this.engine.state === 'SHOP') this.renderWorkshopModal();
-      else if (this.engine.state === 'LEVEL_UP') this.renderLevelUpModal();
-      else if (this.engine.state === 'REVIVE_PROMPT' || this.engine.state === 'GAMEOVER') this.openDeathModal();
-      else this.resetToInGameHud();
+      this.renderMainMenu();
     });
 
     document.getElementById('btn-sound-toggle')?.addEventListener('click', (e) => {
@@ -291,18 +206,134 @@ export class UIManager {
       save.save();
       (e.currentTarget as HTMLElement).textContent = save.data.soundEnabled ? '🔊' : '🔇';
     });
+  }
 
-    document.getElementById('btn-theme-toggle')?.addEventListener('click', () => {
-      AudioManager.getInstance().playClick();
-      const themes: ArenaThemeId[] = ['auto', 'cyber_nebula', 'solar_inferno', 'cryo_glacier', 'emerald_matrix'];
-      const save = SaveManager.getInstance();
-      const cur = save.data.selectedTheme || 'auto';
-      const next = themes[(themes.indexOf(cur) + 1) % themes.length];
-      save.setArenaTheme(next);
-      this.engine.applyCurrentTheme();
-      if (this.engine.state === 'MENU') this.renderMainMenu();
-      else this.resetToInGameHud();
+  /** Tells the canvas overlay where the DOM HUD ends so Boss / PvP banners never overlap it. */
+  private syncHudBottom(): void {
+    const hud = this.uiLayer.querySelector('.in-game-hud') as HTMLElement | null;
+    this.engine.hudBottom = hud ? Math.ceil(hud.getBoundingClientRect().bottom) : 0;
+  }
+
+  private togglePauseMenu(): void {
+    if (document.getElementById('pause-menu')) this.closePauseMenu();
+    else if (this.engine.state !== 'MENU') this.openPauseMenu();
+  }
+
+  private closePauseMenu(): void {
+    const el = document.getElementById('pause-menu');
+    if (!el) return;
+    el.remove();
+    this.engine.setSdkPause(false);
+  }
+
+  /** In-game ☰ menu: Continue, Speed, Sound, Language, Crates, Missions, Ranks, Store, Main Menu. Game is paused while open. */
+  private openPauseMenu(): void {
+    document.getElementById('pause-menu')?.remove();
+    const save = SaveManager.getInstance().data;
+    const isTr = save.language === 'tr';
+    const is2x = this.engine.gameSpeedMultiplier === 2;
+    this.engine.setSdkPause(true);
+
+    const el = document.createElement('div');
+    el.id = 'pause-menu';
+    el.className = 'modal-backdrop pause-backdrop';
+    el.innerHTML = `
+      <div class="cyber-panel pause-panel">
+        <h2 class="pause-title">⏸ ${isTr ? 'OYUN DURAKLATILDI' : 'GAME PAUSED'}</h2>
+        <p class="pause-sub">${I18n.t('wave_label')} ${this.engine.currentWave} • ${I18n.t('lvl_label')} ${this.engine.player.level}</p>
+        <button data-pm="resume" class="btn-gold btn-xl pulse-glow">▶ ${isTr ? 'OYUNA DEVAM ET' : 'CONTINUE GAME'}</button>
+        <div class="pause-grid">
+          <button data-pm="speed" class="btn-secondary ${is2x ? 'active-speed' : ''}">⚡ ${is2x ? I18n.t('speed_2x_on') : I18n.t('speed_1x_btn')}</button>
+          <button data-pm="sound" class="btn-secondary">${save.soundEnabled ? '🔊' : '🔇'} ${isTr ? 'SES' : 'SOUND'}</button>
+          <button data-pm="lang" class="btn-secondary">${save.language === 'tr' ? '🌐 TR → EN' : '🌐 EN → TR'}</button>
+          <button data-pm="crates" class="btn-secondary">🎁 ${I18n.t('hud_crates_btn')}</button>
+          <button data-pm="missions" class="btn-secondary">📋 ${I18n.t('hud_missions_btn')}</button>
+          <button data-pm="ranks" class="btn-secondary">🏆 ${I18n.t('hud_ranks_btn')}</button>
+          <button data-pm="store" class="btn-secondary btn-vip">💎 ${I18n.t('vip_store_btn')}</button>
+          <button data-pm="home" class="btn-secondary btn-hud-home">🏠 ${I18n.t('btn_main_menu')}</button>
+        </div>
+      </div>
+    `;
+    this.uiLayer.appendChild(el);
+
+    // Clicking the dim backdrop also resumes
+    el.addEventListener('click', (e) => {
+      if (e.target === el) this.closePauseMenu();
     });
+
+    const openSub = (fn: () => void) => {
+      this.closePauseMenu();
+      this.reopenPauseAfterModal = true;
+      fn();
+    };
+
+    el.querySelectorAll<HTMLElement>('[data-pm]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        AudioManager.getInstance().playClick();
+        switch (btn.dataset.pm) {
+          case 'resume':
+            this.closePauseMenu();
+            break;
+          case 'speed': {
+            const s = SaveManager.getInstance();
+            if (this.engine.gameSpeedMultiplier === 2) {
+              this.engine.gameSpeedMultiplier = 1;
+            } else if (s.data.vipUnlocked || this.engine.tempAdSpeedWave) {
+              this.engine.gameSpeedMultiplier = 2;
+            } else {
+              const watched = await MonetizationManager.getInstance().showRewardedAd('Unlock 2x Turbo Speed (Current Wave)');
+              if (watched) {
+                this.engine.tempAdSpeedWave = true;
+                this.engine.gameSpeedMultiplier = 2;
+              }
+            }
+            this.openPauseMenu();
+            break;
+          }
+          case 'sound': {
+            const s = SaveManager.getInstance();
+            s.data.soundEnabled = !s.data.soundEnabled;
+            s.save();
+            this.openPauseMenu();
+            break;
+          }
+          case 'lang':
+            SaveManager.getInstance().toggleLanguage();
+            this.closePauseMenu();
+            this.rerenderCurrentState();
+            this.openPauseMenu();
+            break;
+          case 'crates':
+            openSub(() => this.openCratesModal());
+            break;
+          case 'missions':
+            openSub(() => this.openMissionsModal());
+            break;
+          case 'ranks':
+            openSub(() => this.openLeaderboardModal());
+            break;
+          case 'store':
+            openSub(() => this.openStoreModal());
+            break;
+          case 'home':
+            this.closePauseMenu();
+            SaveManager.getInstance().recordRunStats(this.engine.currentWave, this.engine.runScore);
+            this.engine.saveCheckpointOnExit();
+            this.engine.state = 'MENU';
+            this.renderMainMenu();
+            break;
+        }
+      });
+    });
+  }
+
+  private rerenderCurrentState(): void {
+    const st = this.engine.state;
+    if (st === 'MENU') this.renderMainMenu();
+    else if (st === 'SHOP') this.renderWorkshopModal();
+    else if (st === 'LEVEL_UP') this.renderLevelUpModal();
+    else if (st === 'REVIVE_PROMPT' || st === 'GAMEOVER') this.openDeathModal();
+    else this.resetToInGameHud();
   }
 
   // Alias for updateHUD
@@ -376,16 +407,6 @@ export class UIManager {
           <h1 class="game-title">NEXUS SURVIVORS<span>${I18n.t('game_subtitle')}</span></h1>
           <p class="hero-subtitle">${I18n.t('hero_desc')}</p>
 
-          <div class="theme-switch-container">
-            <span class="theme-switch-label">${I18n.t('theme_selector_title')}</span>
-            <div class="theme-switch-pills">
-              <button data-theme="auto" class="btn-theme-pill ${d.selectedTheme === 'auto' ? 'active-theme' : ''}">${I18n.t('theme_auto')}</button>
-              <button data-theme="cyber_nebula" class="btn-theme-pill ${d.selectedTheme === 'cyber_nebula' ? 'active-theme' : ''}">${I18n.t('theme_nebula')}</button>
-              <button data-theme="solar_inferno" class="btn-theme-pill ${d.selectedTheme === 'solar_inferno' ? 'active-theme' : ''}">${I18n.t('theme_solar')}</button>
-              <button data-theme="cryo_glacier" class="btn-theme-pill ${d.selectedTheme === 'cryo_glacier' ? 'active-theme' : ''}">${I18n.t('theme_cryo')}</button>
-              <button data-theme="emerald_matrix" class="btn-theme-pill ${d.selectedTheme === 'emerald_matrix' ? 'active-theme' : ''}">${I18n.t('theme_matrix')}</button>
-            </div>
-          </div>
 
           <div class="stats-banner">
             <div><span>${I18n.t('stat_highest_wave')}</span><strong>${I18n.t('wave_label')} ${d.highestWave}</strong></div>
@@ -453,18 +474,6 @@ export class UIManager {
       AudioManager.getInstance().playClick();
       save.setLanguage('tr');
       this.renderMainMenu();
-    });
-
-    this.uiLayer.querySelectorAll('[data-theme]').forEach((btn) => {
-      btn.addEventListener('click', (e) => {
-        const theme = (e.currentTarget as HTMLElement).dataset.theme as ArenaThemeId;
-        if (theme) {
-          AudioManager.getInstance().playClick();
-          save.setArenaTheme(theme);
-          this.engine.applyCurrentTheme();
-          this.renderMainMenu();
-        }
-      });
     });
 
     document.getElementById('btn-continue-run')?.addEventListener('click', () => {
@@ -1044,6 +1053,11 @@ export class UIManager {
       else if (prevState === 'SHOP') this.renderWorkshopModal();
       else if (prevState === 'LEVEL_UP') this.renderLevelUpModal();
       else this.updateTopHudValues();
+      // Opened from the in-game ☰ menu → return to the pause menu instead of resuming abruptly
+      if (this.reopenPauseAfterModal && prevState !== 'MENU') {
+        this.reopenPauseAfterModal = false;
+        this.openPauseMenu();
+      }
     };
 
     document.getElementById(`btn-close-${id}`)?.addEventListener('click', close);

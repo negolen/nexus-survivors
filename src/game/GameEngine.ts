@@ -407,15 +407,22 @@ export class GameEngine {
     this.onHudUpdate?.();
   }
 
-  public applyCurrentTheme(): void {
-    const theme = SaveManager.getInstance().data.selectedTheme || 'auto';
-    this.renderer3d.applyTheme(theme, this.currentWave);
+  /** Pixel bottom of the DOM top-HUD (set by UIManager) so canvas banners never overlap it. */
+  public hudBottom = 0;
+  private themeRollPending = true;
+
+  /** Arena theme is chosen randomly by the game: on a new run, on resume, and every 5 waves. */
+  private rollThemeIfNeeded(waveNum: number): void {
+    if (this.themeRollPending || waveNum === 1 || (waveNum - 1) % 5 === 0) {
+      this.renderer3d.randomizeTheme();
+      this.themeRollPending = false;
+    }
   }
 
   public startWave(waveNum: number): void {
     const save = SaveManager.getInstance();
     this.currentWave = waveNum;
-    this.applyCurrentTheme();
+    this.rollThemeIfNeeded(waveNum);
     const isBossWave = waveNum % 5 === 0;
     this.waveDuration = isBossWave ? 45 : Math.min(40, 22 + waveNum * 2);
     this.waveTimer = this.waveDuration;
@@ -515,6 +522,7 @@ export class GameEngine {
     this.runScore = snap.runScore;
     this.revivedThisRun = snap.revivedThisRun;
 
+    this.themeRollPending = true;
     this.startWave(snap.wave);
     return true;
   }
@@ -1549,7 +1557,7 @@ export class GameEngine {
       const barW = Math.min(580, w * 0.94);
       const barH = isMobile ? 20 : 24;
       const barX = (w - barW) / 2;
-      const barY = isMobile ? 38 : 46;
+      const barY = Math.max(isMobile ? 38 : 46, this.hudBottom + 6);
       bossBarBottom = barY + barH;
       const pct = Math.max(0, activeBoss.hp / activeBoss.maxHp);
       const detLeft = Math.max(0, 34 - this.bossElapsedTime);
@@ -1581,7 +1589,7 @@ export class GameEngine {
       const isMobile = w < 600;
       const trophies = SaveManager.getInstance().data.pvpTrophies || 1000;
       const pwrLvl = SaveManager.getInstance().getCommanderPowerLevel();
-      const pvpY = activeBoss ? bossBarBottom + 4 : (isMobile ? 38 : 46);
+      const pvpY = activeBoss ? bossBarBottom + 4 : Math.max(isMobile ? 38 : 46, this.hudBottom + 6);
       const boxH = isMobile ? 20 : 22;
       ctx.save();
       ctx.font = isMobile ? '700 10px Orbitron, sans-serif' : '700 11px Orbitron, sans-serif';

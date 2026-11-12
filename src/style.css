@@ -150,6 +150,76 @@ button, .hp-bar-label, .wave-pill strong, .currency-pill strong,
 .btn-hud.btn-vip { background: linear-gradient(135deg, rgba(168, 85, 247, 0.3), rgba(56, 189, 248, 0.3)); border-color: #c084fc; }
 .btn-hud-home { border-color: rgba(244, 63, 94, 0.55); color: #fda4af; }
 
+.hud-vitals, .hud-stats {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.btn-menu-burger {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  font-weight: 900;
+  color: var(--neon-gold);
+  border-color: rgba(250, 204, 21, 0.5);
+  background: rgba(15, 23, 42, 0.95);
+  border-radius: 8px;
+  box-shadow: 0 0 10px rgba(250, 204, 21, 0.25);
+  cursor: pointer;
+  transition: all 0.16s ease;
+}
+
+.btn-menu-burger:hover {
+  border-color: var(--neon-gold);
+  transform: scale(1.06);
+  box-shadow: 0 0 14px rgba(250, 204, 21, 0.5);
+}
+
+/* PAUSE MENU MODAL */
+.pause-panel {
+  max-width: 440px;
+  text-align: center;
+  padding: 24px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.pause-title {
+  font-size: 1.45rem;
+  letter-spacing: 1px;
+  color: #ffffff;
+  margin: 0;
+}
+
+.pause-sub {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  font-family: 'Orbitron', sans-serif;
+  margin-top: -6px;
+}
+
+.pause-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.pause-grid .btn-secondary {
+  padding: 10px 12px;
+  font-size: 0.84rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 /* MODALS & PANELS */
 .modal-backdrop {
   position: fixed;
@@ -694,20 +764,18 @@ button:disabled, button.disabled { opacity: 0.45; cursor: not-allowed; transform
 /* ========================================================= */
 @media (max-width: 860px) {
   .in-game-hud {
-    padding: 5px 10px;
+    padding: 5px 8px;
     gap: 6px;
   }
-  .in-game-hud .hud-left,
-  .in-game-hud .hud-center,
-  .in-game-hud .hud-right {
-    gap: 6px;
+  .hud-vitals, .hud-stats {
+    gap: 5px;
   }
   .in-game-hud .hp-bar-wrap {
-    width: 110px;
+    width: 105px;
     height: 22px;
   }
   .in-game-hud .xp-bar-wrap {
-    width: 72px;
+    width: 66px;
     height: 22px;
   }
   .in-game-hud .hp-bar-label {
@@ -715,14 +783,15 @@ button:disabled, button.disabled { opacity: 0.45; cursor: not-allowed; transform
   }
   .in-game-hud .wave-pill,
   .in-game-hud .currency-pill {
-    padding: 3px 8px;
-    font-size: 0.78rem;
-    gap: 4px;
+    padding: 3px 7px;
+    font-size: 0.76rem;
+    gap: 3px;
   }
-  .in-game-hud .btn-hud {
-    padding: 4px 8px;
-    font-size: 0.72rem;
-    height: 26px;
+  .btn-menu-burger {
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+    font-size: 1.15rem;
   }
   .hide-on-mobile {
     display: none !important;
@@ -737,41 +806,39 @@ button:disabled, button.disabled { opacity: 0.45; cursor: not-allowed; transform
 
 @media (max-width: 580px) {
   .in-game-hud {
-    padding: 3px 6px;
+    padding: 3px 5px;
     gap: 4px;
   }
-  .in-game-hud .hud-left,
-  .in-game-hud .hud-center,
-  .in-game-hud .hud-right {
-    gap: 4px;
+  .hud-vitals, .hud-stats {
+    gap: 3px;
   }
   .in-game-hud .hp-bar-wrap {
     width: 84px;
     height: 20px;
   }
   .in-game-hud .xp-bar-wrap {
-    width: 54px;
+    width: 48px;
     height: 20px;
   }
   .in-game-hud .hp-bar-label {
-    font-size: 0.60rem;
+    font-size: 0.58rem;
     letter-spacing: -0.2px;
   }
   .in-game-hud .wave-pill {
-    padding: 2px 6px;
-    font-size: 0.72rem;
-    gap: 3px;
-  }
-  .in-game-hud .currency-pill {
     padding: 2px 5px;
-    font-size: 0.70rem;
+    font-size: 0.68rem;
     gap: 2px;
   }
-  .in-game-hud .btn-hud {
-    padding: 3px 6px;
-    font-size: 0.68rem;
+  .in-game-hud .currency-pill {
+    padding: 2px 4px;
+    font-size: 0.66rem;
+    gap: 2px;
+  }
+  .btn-menu-burger {
+    width: 28px;
+    height: 28px;
     min-width: 28px;
-    height: 24px;
+    font-size: 1rem;
     border-radius: 6px;
   }
   .hide-on-tiny {
