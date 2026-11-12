@@ -316,6 +316,7 @@ export class GameEngine {
   }
 
   public startNewRun(mode: 'SOLO' | 'PVP' = 'SOLO'): void {
+    this.state = 'PLAYING';
     this.gameMode = mode;
     const save = SaveManager.getInstance();
     const cmd = save.data.selectedCommander;
@@ -502,6 +503,7 @@ export class GameEngine {
     const snap = save.data.soloRun;
     if (!snap) return false;
 
+    this.state = 'PLAYING';
     this.gameMode = 'SOLO';
     save.data.selectedCommander = snap.commander;
 

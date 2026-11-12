@@ -99,8 +99,9 @@ export class UIManager {
   }
 
   private resetToInGameHud(): void {
-    this.uiLayer.innerHTML = this.renderTopHud();
+    this.uiLayer.innerHTML = this.renderTopHud(true);
     this.bindTopHudEvents();
+    this.updateTopHudValues();
   }
 
   private cacheHudElements(): void {
@@ -118,7 +119,7 @@ export class UIManager {
     };
   }
 
-  private renderTopHud(): string {
+  private renderTopHud(forceInGame = false): string {
     const save = SaveManager.getInstance().data;
     const p = this.engine.player;
     const hpPct = Math.max(0, Math.min(100, (p.hp / p.maxHp) * 100));
@@ -126,7 +127,7 @@ export class UIManager {
     const langLabel = save.language === 'tr' ? '🌐 TR | EN' : '🌐 EN | TR';
 
     // 1. IN-GAME COMBAT HUD: only HP, Level, Wave, Gold, Gems + a single ☰ menu button
-    if (this.engine.state !== 'MENU') {
+    if (forceInGame || this.engine.state !== 'MENU') {
       return `
       <header class="top-hud in-game-hud">
         <div class="hud-vitals">
@@ -478,10 +479,10 @@ export class UIManager {
 
     document.getElementById('btn-continue-run')?.addEventListener('click', () => {
       AudioManager.getInstance().playClick();
-      this.resetToInGameHud();
       if (!this.engine.resumeSoloRun()) {
         this.engine.startNewRun('SOLO');
       }
+      this.resetToInGameHud();
     });
 
     document.getElementById('btn-start-run')?.addEventListener('click', () => {
@@ -492,14 +493,14 @@ export class UIManager {
         if (!window.confirm(msg)) return;
       }
       AudioManager.getInstance().playClick();
-      this.resetToInGameHud();
       this.engine.startNewRun('SOLO');
+      this.resetToInGameHud();
     });
 
     document.getElementById('btn-start-pvp')?.addEventListener('click', () => {
       AudioManager.getInstance().playClick();
-      this.resetToInGameHud();
       this.engine.startNewRun('PVP');
+      this.resetToInGameHud();
     });
 
     document.getElementById('btn-free-gold-ad')?.addEventListener('click', async () => {
